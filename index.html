@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Robot Sugerido — Harvin Distribuciones</title>
+  <link rel="stylesheet" href="./assets/style.css">
+  <style>
+    /* ── Slider R2 ── */
+    .slider-row{display:flex;align-items:center;gap:12px;background:#1a2540;border:1px solid #2e3350;border-radius:10px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap}
+    .slider-row label{font-size:12px;color:#8b90b0;white-space:nowrap}
+    .slider-row input[type=range]{flex:1;min-width:140px;accent-color:#4f8ef7;height:4px;cursor:pointer}
+    .pct-badge{background:#4f8ef7;color:#fff;font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;min-width:52px;text-align:center}
+    .recalc-btn{background:#4f8ef7;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s}
+    .recalc-btn:hover{background:#2563eb}
+    .slider-info{font-size:11px;color:#8b90b0;flex-basis:100%}
+    /* ── Export buttons ── */
+    .export-bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+    .exp-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid #2e3350;background:#1a1d27;color:#8b90b0;font-size:12px;cursor:pointer;transition:all .15s}
+    .exp-btn:hover{background:#22c55e;color:#fff;border-color:#22c55e}
+    .exp-btn.all:hover{background:#4f8ef7;border-color:#4f8ef7}
+    .exp-btn svg{width:14px;height:14px;flex-shrink:0}
+    /* ── KPI r2 dinámico ── */
+    #r2-kpi-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;background:rgba(79,142,247,.15);color:#4f8ef7;margin-top:4px}
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <p>Inicializando análisis…</p>
+</div>
+
+<div id="app" style="display:none">
+
+  <div class="header">
+    <div>
+      <h1>🤖 Robot Sugerido de Compra — Harvin Distribuciones</h1>
+      <p>Análisis automático de inventario · Ventas · Rotación · Sugeridos por cliente · Ene–May 2026</p>
+    </div>
+    <div class="badges">
+      <div class="badge" id="hdr-clientes">Clientes: <b>—</b></div>
+      <div class="badge" id="hdr-ventas">Ventas: <b>—</b></div>
+      <div class="badge" id="hdr-arts">Arts.: <b>—</b></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showPage('dashboard',this)">📊 Dashboard</div>
+    <div class="tab"        onclick="showPage('resumen',this)">📋 Resumen</div>
+    <div class="tab sep"    onclick="showPage('r1',this)">📦 R1 — Líneas</div>
+    <div class="tab sep"    onclick="showPage('r2',this)">⭐ R2 — Rotación</div>
+    <div class="tab sep"    onclick="showPage('r3',this)">🆕 R3 — Nuevas</div>
+    <div class="tab sep"    onclick="showPage('busqueda',this)">🔍 Buscar</div>
+  </div>
+
+  <div class="main">
+
+    <!-- ══ DASHBOARD ══ -->
+    <div class="page active" id="page-dashboard">
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)" id="kpi-dash"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-t">Ventas por línea de producto</div>
+          <div class="panel-s">Top 12 líneas · período Ene–May 2026</div>
+          <div class="chart-h lg"><canvas id="chartVentaLinea" role="img" aria-label="Ventas por línea">Ventas por línea.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Estado del inventario</div>
+          <div class="panel-s">Distribución de artículos en almacén</div>
+          <div class="chart-dona"><canvas id="chartInventario" role="img" aria-label="Estado inventario">Estado del inventario.</canvas></div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-t">Top 10 clientes por ventas</div>
+          <div class="panel-s">Ventas netas Ene–May 2026</div>
+          <div class="chart-h"><canvas id="chartTopClientes" role="img" aria-label="Top clientes">Top 10 clientes.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Comparativo sugeridos R1 / R2 / R3</div>
+          <div class="panel-s">Artículos y piezas por análisis · top 10 clientes</div>
+          <div class="chart-h"><canvas id="chartComparativo" role="img" aria-label="Comparativo">Comparativo.</canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ RESUMEN ══ -->
+    <div class="page" id="page-resumen">
+      <div class="export-bar">
+        <button class="exp-btn all" onclick="exportResumen()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Exportar resumen completo (.xlsx)
+        </button>
+      </div>
+      <div class="panel">
+        <div class="panel-t">Resumen general — todos los clientes</div>
+        <div class="panel-s">Ordenado por ventas · métricas de los 3 análisis</div>
+        <div class="tbl-wrap" id="tabla-resumen"></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="grid-3">
+        <div class="panel">
+          <div class="panel-t">Sugeridos R1 y líneas</div>
+          <div class="panel-s">Todos los clientes</div>
+          <div class="chart-h"><canvas id="chartConsR1" role="img" aria-label="Consolidado R1">Sugeridos R1.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Ventas por cliente</div>
+          <div class="panel-s">Monto total Ene–May 2026</div>
+          <div class="chart-h"><canvas id="chartConsVentas" role="img" aria-label="Ventas consolidado">Ventas.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">R3 — Líneas faltantes</div>
+          <div class="panel-s">Oportunidad por cliente</div>
+          <div class="chart-h"><canvas id="chartConsR3" role="img" aria-label="Consolidado R3">R3.</canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ R1 ══ -->
+    <div class="page" id="page-r1">
+      <div class="search-box" style="margin-bottom:10px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="sel-cliente-r1" class="search-select" style="min-width:260px"></select>
+          <span id="r1-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div class="export-bar" style="margin:0">
+          <button class="exp-btn" id="btn-exp-r1" onclick="exportarR1()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+            Exportar R1 a Excel
+          </button>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="panel">
+          <div class="panel-t">Sugeridos por línea</div>
+          <div class="panel-s">Artículos disponibles en líneas que ya compra</div>
+          <div class="chart-h"><canvas id="chartR1Lineas" role="img" aria-label="R1 por línea">R1 líneas.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Stock disponible por línea</div>
+          <div class="panel-s">Piezas en almacén listas para vender</div>
+          <div class="chart-h"><canvas id="chartR1Stock" role="img" aria-label="R1 stock">R1 stock.</canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-t">Artículos sugeridos — R1</div>
+        <div class="panel-s">Activos · con stock · en líneas del cliente · no comprados en período</div>
+        <div class="filter-row" id="filtro-linea-r1" style="margin-bottom:10px"></div>
+        <div class="tbl-wrap" id="tabla-r1"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+      </div>
+    </div>
+
+    <!-- ══ R2 ══ -->
+    <div class="page" id="page-r2">
+
+      <!-- SLIDER DE PORCENTAJE -->
+      <div class="slider-row">
+        <label>Porcentaje de rotación:</label>
+        <input type="range" id="r2-slider" min="5" max="50" step="5" value="20"
+          oninput="document.getElementById('r2-pct-val').textContent=this.value+'%'"
+          onchange="recalcularR2(this.value)">
+        <span class="pct-badge" id="r2-pct-val">20%</span>
+        <button class="recalc-btn" onclick="recalcularR2(document.getElementById('r2-slider').value)">
+          Recalcular
+        </button>
+        <p class="slider-info">
+          Ajusta qué porcentaje del top de artículos más vendidos (por unidades) se considera para las sugerencias.
+          20% = top 962 de 4,809 artículos vendidos. Sube el % para más sugerencias, baja para mayor selectividad.
+        </p>
+      </div>
+
+      <div class="search-box" style="margin-bottom:10px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="sel-cliente-r2" class="search-select" style="min-width:260px"></select>
+          <span id="r2-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div class="export-bar" style="margin:0">
+          <button class="exp-btn" id="btn-exp-r2" onclick="exportarR2()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+            Exportar R2 a Excel
+          </button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="panel">
+          <div class="panel-t">Sugeridos top <span id="r2-pct-title">20%</span> por línea</div>
+          <div class="panel-s">Artículos de alta rotación disponibles para este cliente</div>
+          <div class="chart-h"><canvas id="chartR2Lineas" role="img" aria-label="R2 por línea">R2 líneas.</canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Distribución score de rotación</div>
+          <div class="panel-s">Calidad de los sugeridos · mayor score = mayor prioridad</div>
+          <div class="chart-dona"><canvas id="chartR2Score" role="img" aria-label="R2 score">Score.</canvas></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-t">Artículos sugeridos — R2</div>
+        <div class="panel-s">Ordenados por score de rotación · mayor prioridad primero</div>
+        <div class="filter-row" id="filtro-linea-r2" style="margin-bottom:10px"></div>
+        <div class="tbl-wrap" id="tabla-r2"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+      </div>
+    </div>
+
+    <!-- ══ R3 ══ -->
+    <div class="page" id="page-r3">
+      <div class="search-box" style="margin-bottom:10px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="sel-cliente-r3" class="search-select" style="min-width:260px"></select>
+          <span id="r3-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div class="export-bar" style="margin:0">
+          <button class="exp-btn" id="btn-exp-r3" onclick="exportarR3()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+            Exportar R3 a Excel
+          </button>
+        </div>
+      </div>
+      <div class="grid-1" style="margin-bottom:14px">
+        <div class="panel">
+          <div class="panel-t">Artículos y piezas por línea nueva</div>
+          <div class="panel-s">Líneas que el cliente NO trabaja · sugerido = 20% del stock</div>
+          <div class="chart-h"><canvas id="chartR3Lineas" role="img" aria-label="R3 líneas">R3.</canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-t">Artículos sugeridos — R3 líneas no trabajadas</div>
+        <div class="panel-s">Oportunidad de nuevas líneas · cantidad sugerida = 20% de existencia</div>
+        <div class="filter-row" id="filtro-linea-r3" style="margin-bottom:10px"></div>
+        <div class="tbl-wrap" id="tabla-r3"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+      </div>
+    </div>
+
+    <!-- ══ BÚSQUEDA ══ -->
+    <div class="page" id="page-busqueda">
+      <div class="panel">
+        <div class="panel-t">Buscador de artículos en almacén</div>
+        <div class="panel-s">Busca por clave o descripción · solo artículos con stock</div>
+        <div class="search-box">
+          <input id="search-input" class="search-input" type="text" placeholder="Clave o descripción…" oninput="buscarArticulo()">
+          <select id="search-linea" class="search-select" onchange="buscarArticulo()">
+            <option value="">Todas las líneas</option>
+          </select>
+        </div>
+        <div class="tbl-wrap" id="tabla-busqueda">
+          <p style="color:var(--muted);font-size:12px;padding:10px">Escribe al menos 2 caracteres para buscar.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="./assets/parser.js"></script>
+<script src="./assets/ui.js"></script>
+<script src="./assets/charts.js"></script>
+<script src="./assets/export.js"></script>
+
+<script>
+/* Puentes entre botones y funciones de exportación */
+function exportarR1(){
+  const n=document.getElementById('sel-cliente-r1')?.value;
+  if(n) window.exportR1(n);
+}
+function exportarR2(){
+  const n=document.getElementById('sel-cliente-r2')?.value;
+  const p=parseInt(document.getElementById('r2-slider')?.value)||20;
+  if(n) window.exportR2(n,p);
+}
+function exportarR3(){
+  const n=document.getElementById('sel-cliente-r3')?.value;
+  if(n) window.exportR3(n);
+}
+
+/* Mostrar botón de export al seleccionar cliente */
+document.addEventListener('rbready',()=>{
+  ['r1','r2','r3'].forEach(id=>{
+    const sel=document.getElementById('sel-cliente-'+id);
+    if(!sel) return;
+    const origChange=sel.onchange;
+    sel.addEventListener('change',()=>{
+      const btn=document.getElementById('btn-exp-'+id);
+      if(btn) btn.style.display=sel.value?'flex':'none';
+      const t=document.getElementById('r2-pct-title');
+      if(t) t.textContent=(window.RB._r2pct||20)+'%';
+    });
+  });
+  window.RB._r2pct=20;
+});
+</script>
+
+</body>
+</html>
