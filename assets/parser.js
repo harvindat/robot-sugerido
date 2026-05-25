@@ -67,7 +67,13 @@
       for (let j = cr.i + 2; j < fin; j++) {
         const r    = raw[j];
         const clave = ps(r[0]);
-        if (!clave || isNaN(pn(r[12])) || r[12] === null) continue;
+        // Filtro robusto: salta filas de sub-encabezado ('Artículo','Venta','Unidades')
+        // que aparecen cuando un cliente tiene múltiples secciones en VCLIE.
+        // Regla: col[12] siempre es numérico en artículos reales; es string en encabezados.
+        if (!clave) continue;
+        if (r[12] === null || r[12] === undefined) continue;
+        if (typeof r[12] === 'string') continue;   // ← encabezado de sección, no artículo real
+        if (isNaN(+r[12])) continue;               // ← por si acaso llega otro tipo no numérico
         arts.push({ clave, desc: ps(r[4]), venta: pn(r[12]), uds: pn(r[14]) });
       }
       clientes.push({
