@@ -43,12 +43,36 @@
   }
 
   /* ── INA ─ artículos inactivos ──────────────────────── */
+  // NOTA: NO usamos la hoja INA del Excel porque su criterio de "inactividad"
+  // puede diferir del período de VCLIE (ej: INA con venta máxima=0 histórico
+  // vs VCLIE con ventas del período Ene-May). Esto causa que artículos que SÍ
+  // se vendieron en el período queden excluidos de los sugeridos.
+  //
+  // SOLUCIÓN: calculamos inactivos directamente desde VCLIE.
+  // Un artículo es "inactivo" si NO aparece en ninguna venta del período.
+  // Esto garantiza coherencia total entre los 4 filtros de R1/R2/R3.
   function parseInactivos(wb) {
-    const raw = arr2d(wb.Sheets['INA']);
+    // Construir set de artículos con venta real en el período (desde VCLIE)
+    const rawV = arr2d(wb.Sheets['VCLIE']);
+    const conVenta = new Set();
+    for (let i = 0; i < rawV.length; i++) {
+      const clave = ps(rawV[i][0]);
+      const venta = rawV[i][12];
+      // Solo artículos con venta numérica > 0 (excluye encabezados y totales)
+      if (clave && typeof venta === 'number' && venta > 0) {
+        conVenta.add(clave);
+      }
+    }
+
+    // Un artículo es "inactivo" si existe en el inventario pero NO tiene venta en el período
+    // Construir INA como el complemento: todos los artículos del catálogo sin venta
+    const rawE = arr2d(wb.Sheets['EXIVAL']);
     const ina = new Set();
-    for (let i = 5; i < raw.length; i++) {
-      const c = ps(raw[i][0]);
-      if (c) ina.add(c);
+    for (let i = 6; i < rawE.length; i++) {
+      const clave = ps(rawE[i][0]);
+      if (clave && !conVenta.has(clave)) {
+        ina.add(clave);
+      }
     }
     return ina;
   }
