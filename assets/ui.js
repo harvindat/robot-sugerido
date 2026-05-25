@@ -313,6 +313,94 @@
     window.buildR3Charts(n);
   };
 
+
+  /* ── Tabla R4 cliente ──────────────────────── */
+  function buildTablaR4(nombre, filtroLinea='', filtroAlerta=''){
+    const {r4} = window.RB;
+    const cli  = r4.find(c=>c.nombre===nombre);
+    const div  = document.getElementById('tabla-r4');
+    if(!div||!cli) return;
+
+    let arts = cli.arts;
+    if(filtroLinea)  arts = arts.filter(a=>a.linea===filtroLinea);
+    if(filtroAlerta) arts = arts.filter(a=>a.alertaStock===filtroAlerta);
+
+    let h='<table><thead><tr><th>Rank</th><th>Clave</th><th>Descripción</th><th>Línea</th>'
+      +'<th>Uds Compradas</th><th>Venta $</th><th>Score</th><th>Stock Actual</th>'
+      +'<th>Stock Sug. (1.5x)</th><th>Alerta</th></tr></thead><tbody>';
+
+    if(!arts.length){ h+='<tr><td colspan="10" style="text-align:center;color:var(--muted)">Sin resultados</td></tr>'; }
+
+    arts.forEach((a,i)=>{
+      const ev=i%2===0;
+      const scCls=a.score>=7?'g':a.score>=4?'a':'r';
+      const alCls=a.alertaStock==='BAJO'?'r':a.alertaStock==='MEDIO'?'a':'g';
+      const rowBg=a.alertaStock==='BAJO'?'background:rgba(192,57,43,0.06)':
+                  a.alertaStock==='MEDIO'?'background:rgba(212,172,13,0.05)':'';
+      h+=`<tr style="${rowBg}">
+        <td style="text-align:center;color:var(--muted);font-size:10px">#${i+1}</td>
+        <td>${a.clave}</td>
+        <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${a.desc}</td>
+        <td><span class="pill b">${a.linea||'—'}</span></td>
+        <td style="text-align:center;font-weight:600">${a.uds}</td>
+        <td>$${Math.round(a.venta).toLocaleString('es-MX')}</td>
+        <td style="text-align:center"><span class="pill ${scCls}">${a.score}</span></td>
+        <td style="text-align:center;font-weight:600;color:${a.alertaStock==='BAJO'?'var(--red)':a.alertaStock==='MEDIO'?'var(--amber)':'var(--green)'}">${a.stock}</td>
+        <td style="text-align:center;font-weight:700;color:var(--green)">${a.stockSugerido}</td>
+        <td style="text-align:center"><span class="pill ${alCls}">${a.alertaStock}</span></td>
+      </tr>`;
+    });
+    h+='</tbody></table>';
+    div.innerHTML=h;
+    document.getElementById('r4-count').textContent=
+      `${arts.length} artículos · Score prom: ${arts.length?+(arts.reduce((s,a)=>s+a.score,0)/arts.length).toFixed(1):0} · ⚠️ ${cli.alertasBajo} críticos · 🔔 ${cli.alertasMedio} medios`;
+  }
+
+  function buildFiltrosR4(nombre){
+    const {r4}=window.RB;
+    const cli=r4.find(c=>c.nombre===nombre);
+    if(!cli) return;
+
+    // Filtro líneas
+    const lineas=[...new Set(cli.arts.map(a=>a.linea).filter(Boolean))].sort();
+    const rowL=document.getElementById('filtro-linea-r4');
+    rowL.innerHTML='<span class="filter-lbl">Línea:</span>'
+      +'<button class="fbtn on" onclick="filtrarR4L('',this)">Todas</button>'
+      +lineas.map(l=>`<button class="fbtn" onclick="filtrarR4L('${l}',this)">${l}</button>`).join('');
+
+    // Filtro alerta
+    const rowA=document.getElementById('filtro-alerta-r4');
+    rowA.innerHTML='<span class="filter-lbl">Alerta stock:</span>'
+      +'<button class="fbtn on" onclick="filtrarR4A('',this)">Todas</button>'
+      +'<button class="fbtn" onclick="filtrarR4A('BAJO',this)" style="border-color:#c0392b;color:#c0392b">🔴 BAJO</button>'
+      +'<button class="fbtn" onclick="filtrarR4A('MEDIO',this)" style="border-color:#d4ac0d;color:#d4ac0d">🟡 MEDIO</button>'
+      +'<button class="fbtn" onclick="filtrarR4A('OK',this)" style="border-color:#27ae60;color:#27ae60">🟢 OK</button>';
+  }
+
+  let _r4linea='', _r4alerta='';
+  window.filtrarR4L=function(l,btn){
+    document.querySelectorAll('#filtro-linea-r4 .fbtn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on'); _r4linea=l;
+    const sel=document.getElementById('sel-cliente-r4');
+    buildTablaR4(sel?.value||'',_r4linea,_r4alerta);
+  };
+  window.filtrarR4A=function(a,btn){
+    document.querySelectorAll('#filtro-alerta-r4 .fbtn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on'); _r4alerta=a;
+    const sel=document.getElementById('sel-cliente-r4');
+    buildTablaR4(sel?.value||'',_r4linea,_r4alerta);
+  };
+
+  window.onClienteR4=function(n){
+    if(!n) return;
+    _r4linea=''; _r4alerta='';
+    buildFiltrosR4(n);
+    buildTablaR4(n,'','');
+    if(window.buildR4Charts) window.buildR4Charts(n);
+    const btn=document.getElementById('btn-exp-r4');
+    if(btn) btn.style.display='flex';
+  };
+
   /* ── Init ───────────────────────────────────── */
   document.addEventListener('rbready',()=>{
     buildHeader();
@@ -320,6 +408,7 @@
     buildClienteSelector('sel-cliente-r1', window.onClienteR1);
     buildClienteSelector('sel-cliente-r2', window.onClienteR2);
     buildClienteSelector('sel-cliente-r3', window.onClienteR3);
+    buildClienteSelector('sel-cliente-r4', window.onClienteR4);
     built.dashboard=true;
   });
 })();

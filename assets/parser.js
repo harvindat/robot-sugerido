@@ -295,7 +295,8 @@
       const r3 = buildR3(clientes, inv, catalogo, inactivos);
       const kpis = buildKpis(inv, catalogo, inactivos, clientes, r1, r2);
 
-      window.RB = { inv, catalogo, inactivos, clientes, r1, r2, r3, kpis };
+      const r4 = buildR4(clientes, inv, catalogo);
+      window.RB = { inv, catalogo, inactivos, clientes, r1, r2, r3, r4, kpis };
 
       await new Promise(r => setTimeout(r, 150));
       loader.style.display = 'none';
@@ -316,3 +317,53 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
   else load();
 })();
+
+  /* ── ANÁLISIS R4 ─ Top Score Rotación Individual por Cliente ── */
+  function buildR4(clientes, inv, catalogo) {
+    return clientes.map(cli => {
+      if (!cli.arts.length) return { nombre: cli.nombre, ventaTotal: cli.ventaTotal, arts: [] };
+
+      const maxUds   = Math.max(...cli.arts.map(a => a.uds))   || 1;
+      const maxVenta = Math.max(...cli.arts.map(a => a.venta)) || 1;
+
+      const arts = cli.arts.map(a => {
+        const linea  = catalogo[a.clave]?.linea || '';
+        const desc   = catalogo[a.clave]?.desc  || a.desc || '';
+        const stock  = inv[a.clave]?.exist ?? 0;
+        // Score compuesto: 70% unidades + 30% venta (ambos normalizados)
+        const scoreUds   = a.uds   / maxUds;
+        const scoreVenta = a.venta / maxVenta;
+        const score = +((scoreUds * 0.7 + scoreVenta * 0.3) * 10).toFixed(1);
+        // Alerta de stock: si stock < uds compradas → riesgo de quiebre
+        const alertaStock = stock < a.uds ? 'BAJO' : stock < a.uds * 2 ? 'MEDIO' : 'OK';
+        return {
+          clave: a.clave, desc, linea,
+          uds: a.uds, venta: a.venta,
+          stock, score, alertaStock,
+          stockSugerido: Math.ceil(a.uds * 1.5), // sugerir 1.5x lo comprado
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      // Agrupar por línea para gráficas
+      const porLinea = {};
+      arts.forEach(a => {
+        if (!a.linea) return;
+        if (!porLinea[a.linea]) porLinea[a.linea] = { uds: 0, venta: 0, arts: 0, scoreMax: 0 };
+        porLinea[a.linea].uds    += a.uds;
+        porLinea[a.linea].venta  += a.venta;
+        porLinea[a.linea].arts   += 1;
+        porLinea[a.linea].scoreMax = Math.max(porLinea[a.linea].scoreMax, a.score);
+      });
+
+      return {
+        nombre:    cli.nombre,
+        ventaTotal:cli.ventaTotal,
+        udsTotal:  cli.udsTotal,
+        arts,
+        porLinea,
+        topArts:   arts.slice(0, 20),
+        alertasBajo: arts.filter(a => a.alertaStock === 'BAJO').length,
+        alertasMedio: arts.filter(a => a.alertaStock === 'MEDIO').length,
+      };
+    });
+  }

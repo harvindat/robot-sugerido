@@ -319,8 +319,94 @@
     XLSX.writeFile(wb, `Harvin_Resumen_Sugerido_Compra.xlsx`);
   }
 
+
+  /* ═══════════════════════════════════════════
+     EXPORTAR R4 — Top Score Rotación Individual
+  ═══════════════════════════════════════════ */
+  function exportR4(nombre){
+    const {r4,clientes} = window.RB;
+    const cli = r4.find(c=>c.nombre===nombre);
+    const cliBase = clientes.find(c=>c.nombre===nombre);
+    if(!cli) return;
+
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    let r = 0;
+
+    // Título
+    setCell(ws,r,0,`TOP SCORE ROTACIÓN — ${nombre.toUpperCase()}`,S.titleDark); merge(ws,r,0,r,9); r++;
+    setCell(ws,r,0,`Ventas: $${Math.round(cli.ventaTotal).toLocaleString('es-MX')}  |  Arts. comprados: ${cli.arts.length}  |  Score prom: ${cli.arts.length?+(cli.arts.reduce((s,a)=>s+a.score,0)/cli.arts.length).toFixed(1):0}  |  Críticos (stock BAJO): ${cli.alertasBajo}`,S.titleMed); merge(ws,r,0,r,9); r++;
+    setCell(ws,r,0,'Metodología: Score compuesto = 70% unidades + 30% venta (normalizados 0-10). Stock sugerido = 1.5× unidades compradas en el período.',{font:{sz:8,italic:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'922B21'}},alignment:{horizontal:'center'},border:border()}); merge(ws,r,0,r,9); r++;
+    r++;
+
+    // Agrupar por línea
+    const porLinea = {};
+    cli.arts.forEach(a=>{
+      if(!a.linea) return;
+      if(!porLinea[a.linea]) porLinea[a.linea]=[];
+      porLinea[a.linea].push(a);
+    });
+
+    const hdrs=['Rank','Clave','Descripción','Línea','Uds Compradas','Venta $','Score (0-10)','Stock Actual','Stock Sugerido (1.5x)','Alerta Stock'];
+    const wCols=[6,12,55,22,14,14,13,13,20,13];
+
+    let rank=1;
+    Object.entries(porLinea).sort((a,b)=>{
+      const maxA=Math.max(...a[1].map(x=>x.score));
+      const maxB=Math.max(...b[1].map(x=>x.score));
+      return maxB-maxA;
+    }).forEach(([linea,arts])=>{
+      const totUds=arts.reduce((s,a)=>s+a.uds,0);
+      const totVenta=arts.reduce((s,a)=>s+a.venta,0);
+      const avgScore=(arts.reduce((s,a)=>s+a.score,0)/arts.length).toFixed(1);
+      const hdrSt={font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'7B1C1C'}},alignment:{horizontal:'left'},border:border()};
+      setCell(ws,r,0,`▸  LÍNEA: ${linea}   |   Arts: ${arts.length}   |   Uds totales: ${totUds}   |   Venta: $${Math.round(totVenta).toLocaleString('es-MX')}   |   Score prom: ${avgScore}`,hdrSt);
+      merge(ws,r,0,r,9); r++;
+
+      hdrs.forEach((h,c)=>{
+        const st=c===6?S.scoreH:c===8?{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'145A32'}},alignment:{horizontal:'center'},border:border()}:S.header;
+        setCell(ws,r,c,h,st);
+      });
+      r++;
+
+      arts.forEach((a,i)=>{
+        const ev=i%2===0;
+        const scSt=a.score>=7?{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E8449'}},alignment:{horizontal:'center'},border:border()}
+          :a.score>=4?{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'9A7D0A'}},alignment:{horizontal:'center'},border:border()}
+          :{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'A93226'}},alignment:{horizontal:'center'},border:border()};
+        const alSt=a.alertaStock==='BAJO'?{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'C0392B'}},alignment:{horizontal:'center'},border:border()}
+          :a.alertaStock==='MEDIO'?{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'9A7D0A'}},alignment:{horizontal:'center'},border:border()}
+          :{font:{bold:true,sz:9,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E8449'}},alignment:{horizontal:'center'},border:border()};
+        const sugSt={font:{bold:true,sz:9,color:{rgb:'145A32'}},fill:{fgColor:{rgb:ev?'EAFAF1':'D5F5E3'}},alignment:{horizontal:'center'},border:border()};
+        setCell(ws,r,0,rank,    ev?S.dataAC:S.dataBC);
+        setCell(ws,r,1,a.clave, ev?S.dataA:S.dataB);
+        setCell(ws,r,2,a.desc,  ev?S.dataA:S.dataB);
+        setCell(ws,r,3,a.linea, ev?S.dataAC:S.dataBC);
+        setCell(ws,r,4,a.uds,   ev?S.dataAC:S.dataBC);
+        setCell(ws,r,5,Math.round(a.venta),ev?S.dataAR:S.dataBR);
+        setCell(ws,r,6,a.score, scSt);
+        setCell(ws,r,7,a.stock, ev?S.dataAC:S.dataBC);
+        setCell(ws,r,8,a.stockSugerido, sugSt);
+        setCell(ws,r,9,a.alertaStock, alSt);
+        r++; rank++;
+      });
+    });
+
+    r++;
+    setCell(ws,r,0,'TOTALES',S.totalLbl); merge(ws,r,0,r,3);
+    setCell(ws,r,4,cli.arts.reduce((s,a)=>s+a.uds,0),S.total);
+    setCell(ws,r,5,Math.round(cli.ventaTotal),S.total);
+    [6,7,8,9].forEach(c=>setCell(ws,r,c,'',S.total));
+
+    ws['!cols']=wCols.map(w=>({wpx:w*6}));
+    autoRange(ws,r,9);
+    XLSX.utils.book_append_sheet(wb,ws,'R4 Top Score');
+    XLSX.writeFile(wb,`R4_TopScore_${nombre.replace(/[^a-zA-Z0-9]/g,'_').slice(0,25)}.xlsx`);
+  }
+
   /* ── Exponer funciones globales ───────────── */
   window.exportR1       = exportR1;
+  window.exportR4       = exportR4;
   window.exportR2       = exportR2;
   window.exportR3       = exportR3;
   window.exportResumen  = exportResumen;

@@ -205,5 +205,64 @@
         }}});
   };
 
+
+  /* ══ R4 — TOP SCORE ROTACIÓN INDIVIDUAL ════ */
+  window.buildR4Charts = function(clienteNombre){
+    const {r4} = window.RB;
+    const cli = r4.find(c=>c.nombre===clienteNombre);
+    if(!cli||!cli.arts.length) return;
+
+    const G='rgba(48,54,61,0.5)',M='#8b949e',T={color:M,font:{size:9}};
+    const fK=v=>{const a=Math.abs(v),s=v<0?'-':'';return a>=1e6?s+'$'+(a/1e6).toFixed(1)+'M':a>=1e3?s+'$'+(a/1e3).toFixed(0)+'K':s+'$'+a.toFixed(0)};
+    const fN=v=>'$'+Math.abs(Math.round(v)).toLocaleString('es-MX');
+
+    // Top 15 por score — barras horizontales
+    const top15 = cli.arts.slice(0,15);
+    mk('chartR4TopScore',{type:'bar',data:{
+      labels: top15.map(a=>a.clave),
+      datasets:[
+        {label:'Score',data:top15.map(a=>a.score),
+         backgroundColor:top15.map(a=>a.score>=7?'#27ae6099':a.score>=4?'#d4ac0d99':'#c0392b99'),
+         borderRadius:4,borderSkipped:false,yAxisID:'y'},
+        {label:'Unidades',data:top15.map(a=>a.uds),
+         backgroundColor:'#2e86c133',borderRadius:4,type:'bar',yAxisID:'y1'},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{
+          label:c=>c.dataset.label==='Score'?` Score: ${c.raw}`:` Uds: ${c.raw}`}}},
+        scales:{
+          x:{grid:{color:G},ticks:T},
+          y:{grid:{display:false},ticks:{...T,font:{size:9}}},
+          y1:{grid:{display:false},ticks:T,position:'right',
+              title:{display:true,text:'Uds',color:M,font:{size:9}}},
+        }}});
+
+    // Ventas por línea — dona
+    const lineas = Object.entries(cli.porLinea).sort((a,b)=>b[1].venta-a[1].venta).slice(0,8);
+    const CLRS=['#c0392b','#e67e22','#d4ac0d','#27ae60','#148f77','#2e86c1','#7d3c98','#a93226'];
+    mk('chartR4Lineas',{type:'doughnut',data:{
+      labels:lineas.map(x=>x[0]),
+      datasets:[{data:lineas.map(x=>x[1].venta),
+        backgroundColor:CLRS.map(c=>c+'99'),borderColor:'#120a0a',borderWidth:2,hoverOffset:5}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+        plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8}},
+          tooltip:{callbacks:{label:c=>` ${c.label}: ${fK(c.raw)}`}}}}});
+
+    // Stock vs Stock sugerido — top 10
+    const top10 = cli.arts.slice(0,10);
+    mk('chartR4Stock',{type:'bar',data:{
+      labels:top10.map(a=>a.clave),
+      datasets:[
+        {label:'Stock actual',data:top10.map(a=>a.stock),backgroundColor:'#2e86c188',borderRadius:3},
+        {label:'Uds compradas',data:top10.map(a=>a.uds),backgroundColor:'#c0392b88',borderRadius:3},
+        {label:'Stock sugerido (1.5x)',data:top10.map(a=>a.stockSugerido),backgroundColor:'#27ae6066',borderRadius:3,type:'line',borderColor:'#27ae60',borderWidth:2,pointRadius:4},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}}},
+        scales:{x:{grid:{display:false},ticks:T},y:{grid:{color:G},ticks:T}}}});
+  };
+
   document.addEventListener('rbready', window.buildDashboard);
 })();
