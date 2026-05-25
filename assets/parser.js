@@ -314,10 +314,6 @@
     }
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-  else load();
-})();
-
   /* ── ANÁLISIS R4 ─ Top Score Rotación Individual por Cliente ── */
   function buildR4(clientes, inv, catalogo) {
     return clientes.map(cli => {
@@ -367,3 +363,7 @@
       };
     });
   }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
+  else load();
+})();
