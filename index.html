@@ -6,22 +6,18 @@
   <title>Robot Sugerido — Harvin Distribuciones</title>
   <link rel="stylesheet" href="./assets/style.css">
   <style>
-    /* ── Slider R2 ── */
-    .slider-row{display:flex;align-items:center;gap:12px;background:#1a2540;border:1px solid #2e3350;border-radius:10px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap}
-    .slider-row label{font-size:12px;color:#8b90b0;white-space:nowrap}
-    .slider-row input[type=range]{flex:1;min-width:140px;accent-color:#4f8ef7;height:4px;cursor:pointer}
-    .pct-badge{background:#4f8ef7;color:#fff;font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;min-width:52px;text-align:center}
-    .recalc-btn{background:#4f8ef7;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s}
-    .recalc-btn:hover{background:#2563eb}
-    .slider-info{font-size:11px;color:#8b90b0;flex-basis:100%}
-    /* ── Export buttons ── */
+    .slider-row{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap}
+    .slider-row label{font-size:12px;color:var(--muted);white-space:nowrap}
+    .slider-row input[type=range]{flex:1;min-width:140px;accent-color:var(--accent);height:4px;cursor:pointer}
+    .pct-badge{background:var(--accent);color:#fff;font-size:13px;font-weight:700;padding:4px 12px;border-radius:20px;min-width:52px;text-align:center}
+    .recalc-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer}
+    .recalc-btn:hover{background:var(--accent2)}
+    .slider-info{font-size:11px;color:var(--muted);flex-basis:100%}
     .export-bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-    .exp-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid #2e3350;background:#1a1d27;color:#8b90b0;font-size:12px;cursor:pointer;transition:all .15s}
-    .exp-btn:hover{background:#22c55e;color:#fff;border-color:#22c55e}
-    .exp-btn.all:hover{background:#4f8ef7;border-color:#4f8ef7}
+    .exp-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s}
+    .exp-btn:hover{background:var(--green);color:#fff;border-color:var(--green)}
+    .exp-btn.all:hover{background:var(--accent);border-color:var(--accent)}
     .exp-btn svg{width:14px;height:14px;flex-shrink:0}
-    /* ── KPI r2 dinámico ── */
-    #r2-kpi-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;background:rgba(79,142,247,.15);color:#4f8ef7;margin-top:4px}
   </style>
 </head>
 <body>
@@ -36,7 +32,7 @@
   <div class="header">
     <div>
       <h1>🤖 Robot Sugerido de Compra — Harvin Distribuciones</h1>
-      <p>Análisis automático de inventario · Ventas · Rotación · Sugeridos por cliente · Ene–May 2026</p>
+      <p>Análisis automático · Inventario · Ventas · Rotación · Sugeridos por cliente</p>
     </div>
     <div class="badges">
       <div class="badge" id="hdr-clientes">Clientes: <b>—</b></div>
@@ -63,25 +59,25 @@
       <div class="grid-2">
         <div class="panel">
           <div class="panel-t">Ventas por línea de producto</div>
-          <div class="panel-s">Top 12 líneas · período Ene–May 2026</div>
-          <div class="chart-h lg"><canvas id="chartVentaLinea" role="img" aria-label="Ventas por línea">Ventas por línea.</canvas></div>
+          <div class="panel-s">Top 12 líneas · período</div>
+          <div class="chart-h lg"><canvas id="chartVentaLinea"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Estado del inventario</div>
           <div class="panel-s">Distribución de artículos en almacén</div>
-          <div class="chart-dona"><canvas id="chartInventario" role="img" aria-label="Estado inventario">Estado del inventario.</canvas></div>
+          <div class="chart-dona"><canvas id="chartInventario"></canvas></div>
         </div>
       </div>
       <div class="grid-2">
         <div class="panel">
           <div class="panel-t">Top 10 clientes por ventas</div>
-          <div class="panel-s">Ventas netas Ene–May 2026</div>
-          <div class="chart-h"><canvas id="chartTopClientes" role="img" aria-label="Top clientes">Top 10 clientes.</canvas></div>
+          <div class="panel-s">Ventas netas del período</div>
+          <div class="chart-h"><canvas id="chartTopClientes"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Comparativo sugeridos R1 / R2 / R3</div>
           <div class="panel-s">Artículos y piezas por análisis · top 10 clientes</div>
-          <div class="chart-h"><canvas id="chartComparativo" role="img" aria-label="Comparativo">Comparativo.</canvas></div>
+          <div class="chart-h"><canvas id="chartComparativo"></canvas></div>
         </div>
       </div>
     </div>
@@ -89,7 +85,7 @@
     <!-- ══ RESUMEN ══ -->
     <div class="page" id="page-resumen">
       <div class="export-bar">
-        <button class="exp-btn all" onclick="exportResumen()">
+        <button class="exp-btn all" onclick="window.exportResumen && window.exportResumen()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
           Exportar resumen completo (.xlsx)
         </button>
@@ -104,17 +100,17 @@
         <div class="panel">
           <div class="panel-t">Sugeridos R1 y líneas</div>
           <div class="panel-s">Todos los clientes</div>
-          <div class="chart-h"><canvas id="chartConsR1" role="img" aria-label="Consolidado R1">Sugeridos R1.</canvas></div>
+          <div class="chart-h"><canvas id="chartConsR1"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Ventas por cliente</div>
-          <div class="panel-s">Monto total Ene–May 2026</div>
-          <div class="chart-h"><canvas id="chartConsVentas" role="img" aria-label="Ventas consolidado">Ventas.</canvas></div>
+          <div class="panel-s">Monto total del período</div>
+          <div class="chart-h"><canvas id="chartConsVentas"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">R3 — Líneas faltantes</div>
           <div class="panel-s">Oportunidad por cliente</div>
-          <div class="chart-h"><canvas id="chartConsR3" role="img" aria-label="Consolidado R3">R3.</canvas></div>
+          <div class="chart-h"><canvas id="chartConsR3"></canvas></div>
         </div>
       </div>
     </div>
@@ -126,83 +122,68 @@
           <select id="sel-cliente-r1" class="search-select" style="min-width:260px"></select>
           <span id="r1-count" style="font-size:12px;color:var(--muted)"></span>
         </div>
-        <div class="export-bar" style="margin:0">
-          <button class="exp-btn" id="btn-exp-r1" onclick="exportarR1()" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
-            Exportar R1 a Excel
-          </button>
-        </div>
+        <button class="exp-btn" id="btn-exp-r1" style="display:none" onclick="doExportR1()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Exportar R1 a Excel
+        </button>
       </div>
       <div class="grid-2" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Sugeridos por línea</div>
           <div class="panel-s">Artículos disponibles en líneas que ya compra</div>
-          <div class="chart-h"><canvas id="chartR1Lineas" role="img" aria-label="R1 por línea">R1 líneas.</canvas></div>
+          <div class="chart-h"><canvas id="chartR1Lineas"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Stock disponible por línea</div>
           <div class="panel-s">Piezas en almacén listas para vender</div>
-          <div class="chart-h"><canvas id="chartR1Stock" role="img" aria-label="R1 stock">R1 stock.</canvas></div>
+          <div class="chart-h"><canvas id="chartR1Stock"></canvas></div>
         </div>
       </div>
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R1</div>
         <div class="panel-s">Activos · con stock · en líneas del cliente · no comprados en período</div>
         <div class="filter-row" id="filtro-linea-r1" style="margin-bottom:10px"></div>
-        <div class="tbl-wrap" id="tabla-r1"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+        <div class="tbl-wrap" id="tabla-r1"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
     </div>
 
     <!-- ══ R2 ══ -->
     <div class="page" id="page-r2">
-
-      <!-- SLIDER DE PORCENTAJE -->
       <div class="slider-row">
         <label>Porcentaje de rotación:</label>
         <input type="range" id="r2-slider" min="5" max="50" step="5" value="20"
-          oninput="document.getElementById('r2-pct-val').textContent=this.value+'%'"
-          onchange="recalcularR2(this.value)">
+          oninput="document.getElementById('r2-pct-val').textContent=this.value+'%'">
         <span class="pct-badge" id="r2-pct-val">20%</span>
-        <button class="recalc-btn" onclick="recalcularR2(document.getElementById('r2-slider').value)">
-          Recalcular
-        </button>
-        <p class="slider-info">
-          Ajusta qué porcentaje del top de artículos más vendidos (por unidades) se considera para las sugerencias.
-          20% = top 962 de 4,809 artículos vendidos. Sube el % para más sugerencias, baja para mayor selectividad.
-        </p>
+        <button class="recalc-btn" onclick="recalcularR2(document.getElementById('r2-slider').value)">Recalcular</button>
+        <p class="slider-info">Ajusta el % del top de artículos más vendidos considerados. 20% = los más vendidos en unidades.</p>
       </div>
-
       <div class="search-box" style="margin-bottom:10px;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="sel-cliente-r2" class="search-select" style="min-width:260px"></select>
           <span id="r2-count" style="font-size:12px;color:var(--muted)"></span>
         </div>
-        <div class="export-bar" style="margin:0">
-          <button class="exp-btn" id="btn-exp-r2" onclick="exportarR2()" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
-            Exportar R2 a Excel
-          </button>
-        </div>
+        <button class="exp-btn" id="btn-exp-r2" style="display:none" onclick="doExportR2()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Exportar R2 a Excel
+        </button>
       </div>
-
       <div class="grid-2" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Sugeridos top <span id="r2-pct-title">20%</span> por línea</div>
-          <div class="panel-s">Artículos de alta rotación disponibles para este cliente</div>
-          <div class="chart-h"><canvas id="chartR2Lineas" role="img" aria-label="R2 por línea">R2 líneas.</canvas></div>
+          <div class="panel-s">Artículos de alta rotación disponibles</div>
+          <div class="chart-h"><canvas id="chartR2Lineas"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Distribución score de rotación</div>
-          <div class="panel-s">Calidad de los sugeridos · mayor score = mayor prioridad</div>
-          <div class="chart-dona"><canvas id="chartR2Score" role="img" aria-label="R2 score">Score.</canvas></div>
+          <div class="panel-s">Calidad de los sugeridos (0–10)</div>
+          <div class="chart-dona"><canvas id="chartR2Score"></canvas></div>
         </div>
       </div>
-
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R2</div>
         <div class="panel-s">Ordenados por score de rotación · mayor prioridad primero</div>
         <div class="filter-row" id="filtro-linea-r2" style="margin-bottom:10px"></div>
-        <div class="tbl-wrap" id="tabla-r2"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+        <div class="tbl-wrap" id="tabla-r2"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
     </div>
 
@@ -213,28 +194,25 @@
           <select id="sel-cliente-r3" class="search-select" style="min-width:260px"></select>
           <span id="r3-count" style="font-size:12px;color:var(--muted)"></span>
         </div>
-        <div class="export-bar" style="margin:0">
-          <button class="exp-btn" id="btn-exp-r3" onclick="exportarR3()" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
-            Exportar R3 a Excel
-          </button>
-        </div>
+        <button class="exp-btn" id="btn-exp-r3" style="display:none" onclick="doExportR3()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Exportar R3 a Excel
+        </button>
       </div>
       <div class="grid-1" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Artículos y piezas por línea nueva</div>
           <div class="panel-s">Líneas que el cliente NO trabaja · sugerido = 20% del stock</div>
-          <div class="chart-h"><canvas id="chartR3Lineas" role="img" aria-label="R3 líneas">R3.</canvas></div>
+          <div class="chart-h"><canvas id="chartR3Lineas"></canvas></div>
         </div>
       </div>
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R3 líneas no trabajadas</div>
-        <div class="panel-s">Oportunidad de nuevas líneas · cantidad sugerida = 20% de existencia</div>
+        <div class="panel-s">Cantidad sugerida = 20% de existencia</div>
         <div class="filter-row" id="filtro-linea-r3" style="margin-bottom:10px"></div>
-        <div class="tbl-wrap" id="tabla-r3"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver sus sugeridos.</p></div>
+        <div class="tbl-wrap" id="tabla-r3"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
     </div>
-
 
     <!-- ══ R4 ══ -->
     <div class="page" id="page-r4">
@@ -243,46 +221,37 @@
           <select id="sel-cliente-r4" class="search-select" style="min-width:260px"></select>
           <span id="r4-count" style="font-size:11px;color:var(--muted)"></span>
         </div>
-        <div class="export-bar" style="margin:0">
-          <button class="exp-btn" id="btn-exp-r4" onclick="exportarR4()" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
-            Exportar R4 a Excel
-          </button>
-        </div>
+        <button class="exp-btn" id="btn-exp-r4" style="display:none" onclick="doExportR4()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Exportar R4 a Excel
+        </button>
       </div>
-
-      <!-- KPIs R4 -->
-      <div id="r4-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px"></div>
-
-      <!-- Gráficas -->
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px" id="r4-kpis"></div>
       <div class="grid-2" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Top 15 artículos por score de rotación</div>
           <div class="panel-s">Score = 70% unidades + 30% venta · verde ≥7 · amarillo ≥4 · rojo &lt;4</div>
-          <div class="chart-h lg"><canvas id="chartR4TopScore" role="img" aria-label="Top score rotación"></canvas></div>
+          <div class="chart-h lg"><canvas id="chartR4TopScore"></canvas></div>
         </div>
         <div class="panel">
           <div class="panel-t">Distribución de ventas por línea</div>
-          <div class="panel-s">Concentración de compra del cliente por línea de producto</div>
-          <div class="chart-dona" style="height:260px"><canvas id="chartR4Lineas" role="img" aria-label="Ventas por línea R4"></canvas></div>
+          <div class="panel-s">Concentración de compra del cliente por línea</div>
+          <div class="chart-dona" style="height:280px"><canvas id="chartR4Lineas"></canvas></div>
         </div>
       </div>
-
       <div class="grid-1" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Stock actual vs Unidades compradas vs Stock sugerido (1.5×)</div>
-          <div class="panel-s">Top 10 artículos · línea verde = nivel de stock recomendado para no quedar desabastecido</div>
-          <div class="chart-h"><canvas id="chartR4Stock" role="img" aria-label="Stock vs compras R4"></canvas></div>
+          <div class="panel-s">Top 10 artículos · línea verde = nivel recomendado para no quedar desabastecido</div>
+          <div class="chart-h"><canvas id="chartR4Stock"></canvas></div>
         </div>
       </div>
-
-      <!-- Filtros -->
       <div class="panel">
         <div class="panel-t">🏆 Top Score — Artículos de mayor rotación individual</div>
-        <div class="panel-s">Ordenados por score · agrupa por línea · filtra por alerta de stock</div>
+        <div class="panel-s">Ordenados por score · agrupados por línea · filtra por alerta de stock</div>
         <div class="filter-row" id="filtro-linea-r4" style="margin-bottom:6px"></div>
         <div class="filter-row" id="filtro-alerta-r4" style="margin-bottom:10px"></div>
-        <div class="tbl-wrap" id="tabla-r4"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente para ver su top score.</p></div>
+        <div class="tbl-wrap" id="tabla-r4"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
     </div>
 
@@ -298,13 +267,13 @@
           </select>
         </div>
         <div class="tbl-wrap" id="tabla-busqueda">
-          <p style="color:var(--muted);font-size:12px;padding:10px">Escribe al menos 2 caracteres para buscar.</p>
+          <p style="color:var(--muted);font-size:12px;padding:10px">Escribe al menos 2 caracteres.</p>
         </div>
       </div>
     </div>
 
-  </div>
-</div>
+  </div><!-- /main -->
+</div><!-- /app -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -314,61 +283,66 @@
 <script src="./assets/export.js"></script>
 
 <script>
-/* KPIs dinámicos R4 */
-function renderKpisR4(nombre){
-  const cli=window.RB?.r4?.find(c=>c.nombre===nombre);
-  if(!cli) return;
-  const g=document.getElementById('r4-kpis');
-  if(!g) return;
-  const avgScore=cli.arts.length?+(cli.arts.reduce((s,a)=>s+a.score,0)/cli.arts.length).toFixed(1):0;
-  const topArt=cli.arts[0]||{};
-  g.innerHTML=`
-    <div class="kpi red"><div class="kpi-lbl">📦 Arts. comprados</div><div class="kpi-val">${cli.arts.length}</div><div class="kpi-sub">Historial Ene–May 2026</div><span class="kpi-pill info">Período</span></div>
-    <div class="kpi green"><div class="kpi-lbl">⭐ Score promedio</div><div class="kpi-val">${avgScore}</div><div class="kpi-sub">de 10 posible</div><span class="kpi-pill ${avgScore>=7?'up':avgScore>=4?'warn':'down'}">${avgScore>=7?'Alto':avgScore>=4?'Medio':'Bajo'}</span></div>
-    <div class="kpi red"><div class="kpi-lbl">🔴 Stock crítico</div><div class="kpi-val">${cli.alertasBajo}</div><div class="kpi-sub">Stock < uds compradas</div><span class="kpi-pill down">Urgente</span></div>
-    <div class="kpi amber"><div class="kpi-lbl">🟡 Stock medio</div><div class="kpi-val">${cli.alertasMedio}</div><div class="kpi-sub">Stock < 2× compradas</div><span class="kpi-pill warn">Revisar</span></div>
-  `;
-}
-const _origR4=window.onClienteR4;
-document.addEventListener('rbready',()=>{
-  const selR4=document.getElementById('sel-cliente-r4');
-  if(selR4) selR4.addEventListener('change',()=>renderKpisR4(selR4.value));
-});
-
-/* Puentes entre botones y funciones de exportación */
-function exportarR1(){
+/* ── Funciones puente — exportación ─────────────────── */
+function doExportR1(){
   const n=document.getElementById('sel-cliente-r1')?.value;
-  if(n) window.exportR1(n);
+  if(n && window.exportR1) window.exportR1(n);
 }
-function exportarR2(){
+function doExportR2(){
   const n=document.getElementById('sel-cliente-r2')?.value;
   const p=parseInt(document.getElementById('r2-slider')?.value)||20;
-  if(n) window.exportR2(n,p);
+  if(n && window.exportR2) window.exportR2(n,p);
 }
-function exportarR4(){
-  const n=document.getElementById('sel-cliente-r4')?.value;
-  if(n) window.exportR4(n);
-}
-function exportarR3(){
+function doExportR3(){
   const n=document.getElementById('sel-cliente-r3')?.value;
-  if(n) window.exportR3(n);
+  if(n && window.exportR3) window.exportR3(n);
+}
+function doExportR4(){
+  const n=document.getElementById('sel-cliente-r4')?.value;
+  if(n && window.exportR4) window.exportR4(n);
 }
 
-/* Mostrar botón de export al seleccionar cliente */
-document.addEventListener('rbready',()=>{
-  ['r1','r2','r3'].forEach(id=>{
-    const sel=document.getElementById('sel-cliente-'+id);
+/* ── Mostrar botón export + KPIs R4 al seleccionar cliente ── */
+document.addEventListener('rbready', function(){
+  window.RB._r2pct = 20;
+
+  /* Botones export R1/R2/R3 */
+  ['r1','r2','r3'].forEach(function(id){
+    const sel = document.getElementById('sel-cliente-'+id);
     if(!sel) return;
-    const origChange=sel.onchange;
-    sel.addEventListener('change',()=>{
-      const btn=document.getElementById('btn-exp-'+id);
-      if(btn) btn.style.display=sel.value?'flex':'none';
-      const t=document.getElementById('r2-pct-title');
-      if(t) t.textContent=(window.RB._r2pct||20)+'%';
+    sel.addEventListener('change', function(){
+      const btn = document.getElementById('btn-exp-'+id);
+      if(btn) btn.style.display = sel.value ? 'flex' : 'none';
+      if(id==='r2'){
+        const t = document.getElementById('r2-pct-title');
+        if(t) t.textContent = (window.RB._r2pct||20)+'%';
+      }
     });
   });
-  window.RB._r2pct=20;
+
+  /* KPIs dinámicos R4 */
+  const selR4 = document.getElementById('sel-cliente-r4');
+  if(selR4){
+    selR4.addEventListener('change', function(){
+      renderKpisR4(selR4.value);
+    });
+  }
 });
+
+function renderKpisR4(nombre){
+  const cli = window.RB && window.RB.r4 && window.RB.r4.find(function(c){ return c.nombre===nombre; });
+  if(!cli) return;
+  const g = document.getElementById('r4-kpis');
+  if(!g) return;
+  const avg = cli.arts.length ? +(cli.arts.reduce(function(s,a){ return s+a.score; },0)/cli.arts.length).toFixed(1) : 0;
+  const pill = avg>=7?'up':avg>=4?'warn':'down';
+  const lbl  = avg>=7?'Alto':avg>=4?'Medio':'Bajo';
+  g.innerHTML =
+    '<div class="kpi blue"><div class="kpi-lbl">📦 Arts. comprados</div><div class="kpi-val">'+cli.arts.length+'</div><div class="kpi-sub">Historial período</div><span class="kpi-pill info">Total</span></div>'+
+    '<div class="kpi green"><div class="kpi-lbl">⭐ Score promedio</div><div class="kpi-val">'+avg+'</div><div class="kpi-sub">de 10 posible</div><span class="kpi-pill '+pill+'">'+lbl+'</span></div>'+
+    '<div class="kpi red"><div class="kpi-lbl">🔴 Stock crítico</div><div class="kpi-val">'+cli.alertasBajo+'</div><div class="kpi-sub">Stock &lt; uds compradas</div><span class="kpi-pill down">Urgente</span></div>'+
+    '<div class="kpi amber"><div class="kpi-lbl">🟡 Stock medio</div><div class="kpi-val">'+cli.alertasMedio+'</div><div class="kpi-sub">Stock &lt; 2× compradas</div><span class="kpi-pill warn">Revisar</span></div>';
+}
 </script>
 
 </body>
