@@ -433,6 +433,8 @@
     if(cnt) cnt.textContent=cli.arts.length+' arts · '+cli.tier+' · crec. +'+Math.round(cli.factorCrec*100)+'% · surtir hoy '+cli.totalSurtibleHoy+' · pedir a proveedor '+cli.totalPendienteProv+' · '+fK(cli.totalInversion);
 
     if(window.buildR5CliCharts) window.buildR5CliCharts(nombre);
+    const btnExp=document.getElementById('btn-exp-r5-cli');
+    if(btnExp) btnExp.style.display='flex';
   };
 
   // MEJORA 4 — Ficha ejecutiva
@@ -561,6 +563,18 @@
       if(id==='resumen'){ buildTablaResumen(); window.buildConsolidado&&window.buildConsolidado(); }
       if(id==='busqueda'){ buildBuscadorLineas(); }
       if(id==='r5'){ window.buildR5GlobalView&&window.buildR5GlobalView(); window.buildR5KPIs&&window.buildR5KPIs(); }
+    }
+    // Al (re)entrar a R5, redibujar la gráfica de la vista visible (canvas ya con tamaño)
+    if(id==='r5'){
+      setTimeout(function(){
+        var vistaCli=document.getElementById('r5-view-cliente');
+        var sel=document.getElementById('sel-cliente-r5');
+        if(vistaCli && vistaCli.classList.contains('on') && sel && sel.value){
+          if(window.buildR5CliCharts) window.buildR5CliCharts(sel.value);
+        } else if(window.buildR5Charts){
+          window.buildR5Charts();
+        }
+      }, 80);
     }
   };
 

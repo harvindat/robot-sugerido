@@ -277,7 +277,6 @@
       });
     }, 150);
   });
-})();
 
   /* ══ R5 — CHARTS GLOBALES ═══════════════════ */
   window.buildR5Charts = function(){
@@ -317,14 +316,20 @@
   };
 
   /* ══ R5 — CHARTS POR CLIENTE ═══════════════ */
-  window.buildR5CliCharts = function(nombre){
+  window.buildR5CliCharts = function(nombre, _intentos){
     const r5=window.RB.r5; if(!r5) return;
     const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
+    _intentos = _intentos || 0;
 
-    // Si el panel está oculto, el canvas mide 0 → diferir hasta que sea visible.
+    // El canvas necesita dimensiones reales (>0) para que Chart.js dibuje.
+    // Si el panel aún no tiene tamaño (recién hecho visible), reintentar.
     const cont=document.getElementById('chartR5CliStock');
-    if(cont && cont.offsetParent===null){
-      setTimeout(function(){ window.buildR5CliCharts(nombre); }, 80);
+    const wrap=cont ? cont.parentElement : null;
+    const ancho = wrap ? wrap.clientWidth : 0;
+    if(ancho < 10){
+      if(_intentos < 25){
+        setTimeout(function(){ window.buildR5CliCharts(nombre, _intentos+1); }, 80);
+      }
       return;
     }
 
@@ -352,11 +357,12 @@
       options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
         plugins:{legend:{position:'right'},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} arts`}}}}});
 
-    // Forzar medición correcta tras crear (por si el panel acaba de hacerse visible)
+    // Resize de seguridad tras crear
     setTimeout(function(){
       ['chartR5CliStock','chartR5CliSema'].forEach(function(id){
-        if(CH[id]) CH[id].resize();
+        if(CH[id]){ try{ CH[id].resize(); }catch(e){} }
       });
-    }, 50);
+    }, 60);
   };
 
+})();

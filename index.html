@@ -462,16 +462,8 @@ document.addEventListener('rbready', function(){
   const selR4=document.getElementById('sel-cliente-r4');
   if(selR4) selR4.addEventListener('change', function(){ renderKpisR4(selR4.value); });
 
-  /* R5 cliente selector */
-  const selR5=document.getElementById('sel-cliente-r5');
-  if(selR5){
-    selR5.addEventListener('change', function(){
-      if(selR5.value){
-        document.getElementById('btn-exp-r5-cli').style.display='flex';
-        if(window.onClienteR5) window.onClienteR5(selR5.value);
-      }
-    });
-  }
+  /* R5 cliente: el manejo del cambio lo hace buildClienteSelector (ui.js).
+     Solo nos aseguramos de mostrar el botón de export cuando hay selección. */
 
   /* R5 r5updated event */
   document.addEventListener('r5updated', function(){
