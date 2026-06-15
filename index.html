@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Robot Sugerido — Harvin Distribuciones</title>
+  <title>Robot Sugerido v3 — Harvin Distribuciones</title>
   <link rel="stylesheet" href="./assets/style.css">
   <style>
+    /* ── Extras v3 ── */
     .slider-row{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;flex-wrap:wrap}
     .slider-row label{font-size:12px;color:var(--muted);white-space:nowrap}
     .slider-row input[type=range]{flex:1;min-width:140px;accent-color:var(--accent);height:4px;cursor:pointer}
@@ -18,6 +19,32 @@
     .exp-btn:hover{background:var(--green);color:#fff;border-color:var(--green)}
     .exp-btn.all:hover{background:var(--accent);border-color:var(--accent)}
     .exp-btn svg{width:14px;height:14px;flex-shrink:0}
+    /* precio badges */
+    .pill.precio{background:#e8f4fd;color:#1a5276}
+    .pill.valor{background:#eafaf1;color:#1e8449;font-weight:700}
+    .pill.inv{background:#fef9e7;color:#7e5109;font-weight:700}
+    /* semáforo R5 */
+    .sema-r{background:#fdecea;color:#c0392b;border:1px solid #f5b7b1}
+    .sema-a{background:#fef5e7;color:#9a7d0a;border:1px solid #f9e79f}
+    .sema-v{background:#eafaf1;color:#1e8449;border:1px solid #a9dfbf}
+    /* ABC pills */
+    .abc-a{background:#eededf;color:#6c3483}
+    .abc-b{background:#d6eaf8;color:#154360}
+    .abc-c{background:#f2f3f4;color:#717d7e}
+    /* R5 sub-nav */
+    .r5-subnav{display:flex;gap:4px;margin-bottom:14px}
+    .r5-subbtn{padding:6px 16px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+    .r5-subbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .r5-view{display:none}
+    .r5-view.on{display:block}
+    /* Filtros R5 */
+    .r5-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+    .r5-filtros select{padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;cursor:pointer}
+    .r5-filtros .fbtn{padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:11px;cursor:pointer}
+    .r5-filtros .fbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+    /* Precio en tablas */
+    .col-precio{min-width:80px;text-align:right;font-family:monospace;font-size:11px}
+    .col-valor{min-width:90px;text-align:right;font-size:11px;font-weight:600;color:var(--green)}
   </style>
 </head>
 <body>
@@ -31,13 +58,13 @@
 
   <div class="header">
     <div>
-      <h1>🤖 Robot Sugerido de Compra — Harvin Distribuciones</h1>
-      <p>Análisis automático · Inventario · Ventas · Rotación · Sugeridos por cliente</p>
+      <h1>🤖 Robot Sugerido v3 — Harvin Distribuciones</h1>
+      <p id="hdr-periodo" style="font-size:11px;color:var(--muted)">Cargando período…</p>
     </div>
     <div class="badges">
       <div class="badge" id="hdr-clientes">Clientes: <b>—</b></div>
       <div class="badge" id="hdr-ventas">Ventas: <b>—</b></div>
-      <div class="badge" id="hdr-arts">Arts.: <b>—</b></div>
+      <div class="badge" id="hdr-arts">Almacén: <b>—</b></div>
     </div>
   </div>
 
@@ -48,6 +75,7 @@
     <div class="tab sep"    onclick="showPage('r2',this)">⭐ R2 — Rotación</div>
     <div class="tab sep"    onclick="showPage('r3',this)">🆕 R3 — Nuevas</div>
     <div class="tab sep"    onclick="showPage('r4',this)">🏆 R4 — Score</div>
+    <div class="tab sep r5-tab" onclick="showPage('r5',this)">🛒 R5 — Compra</div>
     <div class="tab sep"    onclick="showPage('busqueda',this)">🔍 Buscar</div>
   </div>
 
@@ -75,8 +103,8 @@
           <div class="chart-h"><canvas id="chartTopClientes"></canvas></div>
         </div>
         <div class="panel">
-          <div class="panel-t">Comparativo sugeridos R1 / R2 / R3</div>
-          <div class="panel-s">Artículos y piezas por análisis · top 10 clientes</div>
+          <div class="panel-t">Comparativo R1 / R2 / R3</div>
+          <div class="panel-s">Artículos sugeridos por análisis · top 10 clientes</div>
           <div class="chart-h"><canvas id="chartComparativo"></canvas></div>
         </div>
       </div>
@@ -92,7 +120,7 @@
       </div>
       <div class="panel">
         <div class="panel-t">Resumen general — todos los clientes</div>
-        <div class="panel-s">Ordenado por ventas · métricas de los 3 análisis</div>
+        <div class="panel-s">Ordenado por ventas · métricas de los 4 análisis</div>
         <div class="tbl-wrap" id="tabla-resumen"></div>
       </div>
       <div style="height:14px"></div>
@@ -141,7 +169,7 @@
       </div>
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R1</div>
-        <div class="panel-s">Activos · con stock · en líneas del cliente · no comprados en período</div>
+        <div class="panel-s">Activos · con stock · en líneas del cliente · no comprados en período · incluye precio y valor de almacén</div>
         <div class="filter-row" id="filtro-linea-r1" style="margin-bottom:10px"></div>
         <div class="tbl-wrap" id="tabla-r1"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
@@ -155,7 +183,7 @@
           oninput="document.getElementById('r2-pct-val').textContent=this.value+'%'">
         <span class="pct-badge" id="r2-pct-val">20%</span>
         <button class="recalc-btn" onclick="recalcularR2(document.getElementById('r2-slider').value)">Recalcular</button>
-        <p class="slider-info">Ajusta el % del top de artículos más vendidos considerados. 20% = los más vendidos en unidades.</p>
+        <p class="slider-info">Ajusta el % del top de artículos más vendidos considerados.</p>
       </div>
       <div class="search-box" style="margin-bottom:10px;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -181,7 +209,7 @@
       </div>
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R2</div>
-        <div class="panel-s">Ordenados por score de rotación · mayor prioridad primero</div>
+        <div class="panel-s">Ordenados por score · incluye precio unitario y valor de almacén</div>
         <div class="filter-row" id="filtro-linea-r2" style="margin-bottom:10px"></div>
         <div class="tbl-wrap" id="tabla-r2"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
@@ -208,7 +236,7 @@
       </div>
       <div class="panel">
         <div class="panel-t">Artículos sugeridos — R3 líneas no trabajadas</div>
-        <div class="panel-s">Cantidad sugerida = 20% de existencia</div>
+        <div class="panel-s">Cantidad sugerida = 20% de existencia · incluye precio y valor de la propuesta</div>
         <div class="filter-row" id="filtro-linea-r3" style="margin-bottom:10px"></div>
         <div class="tbl-wrap" id="tabla-r3"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
       </div>
@@ -242,16 +270,102 @@
       <div class="grid-1" style="margin-bottom:14px">
         <div class="panel">
           <div class="panel-t">Stock actual vs Unidades compradas vs Stock sugerido (1.5×)</div>
-          <div class="panel-s">Top 10 artículos · línea verde = nivel recomendado para no quedar desabastecido</div>
+          <div class="panel-s">Top 10 artículos · línea verde = nivel recomendado</div>
           <div class="chart-h"><canvas id="chartR4Stock"></canvas></div>
         </div>
       </div>
       <div class="panel">
         <div class="panel-t">🏆 Top Score — Artículos de mayor rotación individual</div>
-        <div class="panel-s">Ordenados por score · agrupados por línea · filtra por alerta de stock</div>
+        <div class="panel-s">Ordenados por score · incluye precio unitario real pagado</div>
         <div class="filter-row" id="filtro-linea-r4" style="margin-bottom:6px"></div>
         <div class="filter-row" id="filtro-alerta-r4" style="margin-bottom:10px"></div>
         <div class="tbl-wrap" id="tabla-r4"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
+      </div>
+    </div>
+
+    <!-- ══ R5 — SUGERIDO DE COMPRA ══ -->
+    <div class="page" id="page-r5">
+      <!-- Slider de factor de seguridad -->
+      <div class="slider-row">
+        <label>Colchón de seguridad:</label>
+        <input type="range" id="r5-factor-slider" min="0" max="100" step="10" value="50"
+          oninput="document.getElementById('r5-factor-val').textContent=this.value+'%'">
+        <span class="pct-badge" id="r5-factor-val">50%</span>
+        <button class="recalc-btn" onclick="window.onRecalcR5()">Recalcular</button>
+        <p class="slider-info">
+          0% = stock exacto para 1 mes · 50% = 1.5 meses (recomendado, actualización 2×/sem) · 100% = 2 meses de cobertura.
+          Período detectado: <span id="r5-periodo-txt" style="font-weight:600">—</span>
+        </p>
+      </div>
+
+      <!-- KPIs R5 -->
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px" id="r5-kpis-global"></div>
+
+      <!-- Sub-navegación Global / Por cliente -->
+      <div class="r5-subnav">
+        <button class="r5-subbtn on" onclick="switchR5View('global',this)">🏭 Global — Orden de compra almacén</button>
+        <button class="r5-subbtn"   onclick="switchR5View('cliente',this)">👤 Por cliente — Demanda individual</button>
+      </div>
+
+      <!-- Vista GLOBAL -->
+      <div class="r5-view on" id="r5-view-global">
+        <div class="grid-2" style="margin-bottom:14px">
+          <div class="panel">
+            <div class="panel-t">Cobertura por línea</div>
+            <div class="panel-s">Artículos ROJO + AMARILLO + VERDE por línea de producto</div>
+            <div class="chart-h"><canvas id="chartR5Lineas"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-t">Clasificación ABC</div>
+            <div class="panel-s">Distribución A (80% venta) · B (95%) · C (cola)</div>
+            <div class="chart-dona"><canvas id="chartR5Abc"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">🛒 Orden de compra sugerida — Global</div>
+          <div class="panel-s">Ordenado por urgencia · incluye cobertura, compra y inversión estimada</div>
+          <div class="r5-filtros" id="r5-filtros-global"></div>
+          <div style="margin-bottom:8px;display:flex;gap:8px;justify-content:flex-end">
+            <button class="exp-btn" onclick="window.exportR5Global && window.exportR5Global()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+              Exportar orden de compra (.xlsx)
+            </button>
+          </div>
+          <div id="r5-global-summary" style="font-size:11.5px;color:var(--muted);margin-bottom:6px"></div>
+          <div class="tbl-wrap" id="tabla-r5-global"></div>
+        </div>
+      </div>
+
+      <!-- Vista POR CLIENTE -->
+      <div class="r5-view" id="r5-view-cliente">
+        <div class="search-box" style="margin-bottom:14px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="sel-cliente-r5" class="search-select" style="min-width:260px"></select>
+            <span id="r5-cli-count" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+          <button class="exp-btn" id="btn-exp-r5-cli" style="display:none" onclick="window.exportR5Cliente && window.exportR5Cliente(document.getElementById('sel-cliente-r5').value)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 12-4-4m4 4 4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+            Exportar R5 cliente (.xlsx)
+          </button>
+        </div>
+        <div class="grid-2" style="margin-bottom:14px">
+          <div class="panel">
+            <div class="panel-t">Demanda vs stock por artículo</div>
+            <div class="panel-s">Top 15 artículos del cliente · stock actual vs necesario</div>
+            <div class="chart-h lg"><canvas id="chartR5CliStock"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-t">Semáforo por línea</div>
+            <div class="panel-s">Distribución de urgencia en líneas del cliente</div>
+            <div class="chart-dona"><canvas id="chartR5CliSema"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-t">Demanda individual — análisis por artículo del cliente</div>
+          <div class="panel-s">Basado en compras del período · tasa diaria · cobertura actual · compra sugerida</div>
+          <div class="r5-filtros" id="r5-filtros-cli"></div>
+          <div class="tbl-wrap" id="tabla-r5-cli"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
+        </div>
       </div>
     </div>
 
@@ -283,61 +397,80 @@
 <script src="./assets/export.js"></script>
 
 <script>
-/* ── Funciones puente — exportación ─────────────────── */
-function doExportR1(){
-  const n=document.getElementById('sel-cliente-r1')?.value;
-  if(n && window.exportR1) window.exportR1(n);
-}
-function doExportR2(){
-  const n=document.getElementById('sel-cliente-r2')?.value;
-  const p=parseInt(document.getElementById('r2-slider')?.value)||20;
-  if(n && window.exportR2) window.exportR2(n,p);
-}
-function doExportR3(){
-  const n=document.getElementById('sel-cliente-r3')?.value;
-  if(n && window.exportR3) window.exportR3(n);
-}
-function doExportR4(){
-  const n=document.getElementById('sel-cliente-r4')?.value;
-  if(n && window.exportR4) window.exportR4(n);
+/* ── Puentes ──────────────────────────────────── */
+function doExportR1(){ const n=document.getElementById('sel-cliente-r1')?.value; if(n&&window.exportR1)window.exportR1(n); }
+function doExportR2(){ const n=document.getElementById('sel-cliente-r2')?.value; const p=parseInt(document.getElementById('r2-slider')?.value)||20; if(n&&window.exportR2)window.exportR2(n,p); }
+function doExportR3(){ const n=document.getElementById('sel-cliente-r3')?.value; if(n&&window.exportR3)window.exportR3(n); }
+function doExportR4(){ const n=document.getElementById('sel-cliente-r4')?.value; if(n&&window.exportR4)window.exportR4(n); }
+
+/* ── R5 sub-nav ───────────────────────────────── */
+function switchR5View(v, btn){
+  document.querySelectorAll('.r5-view').forEach(el=>el.classList.remove('on'));
+  document.querySelectorAll('.r5-subbtn').forEach(el=>el.classList.remove('on'));
+  document.getElementById('r5-view-'+v).classList.add('on');
+  btn.classList.add('on');
 }
 
-/* ── Mostrar botón export + KPIs R4 al seleccionar cliente ── */
+/* ── R5 recálculo ─────────────────────────────── */
+window.onRecalcR5 = function(){
+  const f = parseInt(document.getElementById('r5-factor-slider')?.value || 50) / 100;
+  if(window.recalcularR5) window.recalcularR5(f);
+};
+
+/* ── KPIs R4 dinámicos ────────────────────────── */
 document.addEventListener('rbready', function(){
   window.RB._r2pct = 20;
 
-  /* Botones export R1/R2/R3 */
+  // Período en header
+  const p = window.RB.periodo || {};
+  const el = document.getElementById('hdr-periodo');
+  if(el) el.textContent = (p.texto || '') + (p.dias ? ' · ' + p.dias + ' días' : '');
+  const rt = document.getElementById('r5-periodo-txt');
+  if(rt) rt.textContent = (p.texto || 'desconocido') + (p.dias ? ' (' + p.dias + ' días)' : '');
+
+  /* Export listeners R1/R2/R3 */
   ['r1','r2','r3'].forEach(function(id){
-    const sel = document.getElementById('sel-cliente-'+id);
+    const sel=document.getElementById('sel-cliente-'+id);
     if(!sel) return;
     sel.addEventListener('change', function(){
-      const btn = document.getElementById('btn-exp-'+id);
-      if(btn) btn.style.display = sel.value ? 'flex' : 'none';
-      if(id==='r2'){
-        const t = document.getElementById('r2-pct-title');
-        if(t) t.textContent = (window.RB._r2pct||20)+'%';
-      }
+      const btn=document.getElementById('btn-exp-'+id);
+      if(btn) btn.style.display=sel.value?'flex':'none';
+      if(id==='r2'){ const t=document.getElementById('r2-pct-title'); if(t) t.textContent=(window.RB._r2pct||20)+'%'; }
     });
   });
 
-  /* KPIs dinámicos R4 */
-  const selR4 = document.getElementById('sel-cliente-r4');
-  if(selR4){
-    selR4.addEventListener('change', function(){
-      renderKpisR4(selR4.value);
+  /* R4 KPIs al cambiar cliente */
+  const selR4=document.getElementById('sel-cliente-r4');
+  if(selR4) selR4.addEventListener('change', function(){ renderKpisR4(selR4.value); });
+
+  /* R5 cliente selector */
+  const selR5=document.getElementById('sel-cliente-r5');
+  if(selR5){
+    selR5.addEventListener('change', function(){
+      if(selR5.value){
+        document.getElementById('btn-exp-r5-cli').style.display='flex';
+        if(window.onClienteR5) window.onClienteR5(selR5.value);
+      }
     });
   }
+
+  /* R5 r5updated event */
+  document.addEventListener('r5updated', function(){
+    if(window.buildR5GlobalView) window.buildR5GlobalView();
+    if(window.buildR5KPIs) window.buildR5KPIs();
+    const selR5b = document.getElementById('sel-cliente-r5');
+    if(selR5b && selR5b.value && window.onClienteR5) window.onClienteR5(selR5b.value);
+  });
 });
 
 function renderKpisR4(nombre){
-  const cli = window.RB && window.RB.r4 && window.RB.r4.find(function(c){ return c.nombre===nombre; });
+  const cli=window.RB&&window.RB.r4&&window.RB.r4.find(function(c){return c.nombre===nombre;});
   if(!cli) return;
-  const g = document.getElementById('r4-kpis');
-  if(!g) return;
-  const avg = cli.arts.length ? +(cli.arts.reduce(function(s,a){ return s+a.score; },0)/cli.arts.length).toFixed(1) : 0;
-  const pill = avg>=7?'up':avg>=4?'warn':'down';
-  const lbl  = avg>=7?'Alto':avg>=4?'Medio':'Bajo';
-  g.innerHTML =
+  const g=document.getElementById('r4-kpis'); if(!g) return;
+  const avg=cli.arts.length?+(cli.arts.reduce(function(s,a){return s+a.score;},0)/cli.arts.length).toFixed(1):0;
+  const pill=avg>=7?'up':avg>=4?'warn':'down';
+  const lbl=avg>=7?'Alto':avg>=4?'Medio':'Bajo';
+  g.innerHTML=
     '<div class="kpi blue"><div class="kpi-lbl">📦 Arts. comprados</div><div class="kpi-val">'+cli.arts.length+'</div><div class="kpi-sub">Historial período</div><span class="kpi-pill info">Total</span></div>'+
     '<div class="kpi green"><div class="kpi-lbl">⭐ Score promedio</div><div class="kpi-val">'+avg+'</div><div class="kpi-sub">de 10 posible</div><span class="kpi-pill '+pill+'">'+lbl+'</span></div>'+
     '<div class="kpi red"><div class="kpi-lbl">🔴 Stock crítico</div><div class="kpi-val">'+cli.alertasBajo+'</div><div class="kpi-sub">Stock &lt; uds compradas</div><span class="kpi-pill down">Urgente</span></div>'+

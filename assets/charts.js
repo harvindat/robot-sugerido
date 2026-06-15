@@ -266,3 +266,71 @@
 
   document.addEventListener('rbready', window.buildDashboard);
 })();
+
+  /* ══ R5 — CHARTS GLOBALES ═══════════════════ */
+  window.buildR5Charts = function(){
+    const r5=window.RB.r5; if(!r5) return;
+    const arts=r5.arts.filter(a=>a.compra>0||a.semaforo==='ROJO');
+
+    // Por línea: stacked ROJO/AMARILLO/VERDE
+    const linMap={};
+    arts.forEach(a=>{
+      if(!linMap[a.linea]) linMap[a.linea]={R:0,A:0,V:0};
+      if(a.semaforo==='ROJO')linMap[a.linea].R++;
+      else if(a.semaforo==='AMARILLO')linMap[a.linea].A++;
+      else linMap[a.linea].V++;
+    });
+    const topLin=Object.entries(linMap).sort((a,b)=>(b[1].R+b[1].A)-(a[1].R+a[1].A)).slice(0,12);
+    mk('chartR5Lineas',{type:'bar',data:{
+      labels:topLin.map(x=>x[0]),
+      datasets:[
+        {label:'ROJO (<7d)',  data:topLin.map(x=>x[1].R),backgroundColor:'#e24b4a99',borderRadius:3},
+        {label:'AMARILLO (7-30d)',data:topLin.map(x=>x[1].A),backgroundColor:'#f59e0b99',borderRadius:3},
+        {label:'VERDE (≥30d)',data:topLin.map(x=>x[1].V),backgroundColor:'#22c55e66',borderRadius:3},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw} arts`}}},
+        scales:{x:{stacked:true,grid:{display:false},ticks:{...T,maxRotation:40,font:{size:9}}},
+                y:{stacked:true,grid:{color:G},ticks:T}}}});
+
+    // ABC donut
+    const abc={A:r5.arts.filter(a=>a.abc==='A').length,B:r5.arts.filter(a=>a.abc==='B').length,C:r5.arts.filter(a=>a.abc==='C').length};
+    mk('chartR5Abc',{type:'doughnut',data:{
+      labels:['A — top 80% venta','B — 80-95%','C — cola larga'],
+      datasets:[{data:[abc.A,abc.B,abc.C],
+        backgroundColor:['#7d3c9899','#2e86c199','#95a5a699'],
+        borderColor:'#161b22',borderWidth:2,hoverOffset:5}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+        plugins:{legend:{position:'right'},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} arts`}}}}});
+  };
+
+  /* ══ R5 — CHARTS POR CLIENTE ═══════════════ */
+  window.buildR5CliCharts = function(nombre){
+    const r5=window.RB.r5; if(!r5) return;
+    const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
+
+    // Top 15: Stock vs Compra sugerida
+    const top15=cli.arts.filter(a=>a.compra>0||a.semaforo==='ROJO').slice(0,15);
+    mk('chartR5CliStock',{type:'bar',data:{
+      labels:top15.map(a=>a.clave),
+      datasets:[
+        {label:'Stock actual', data:top15.map(a=>a.exist),backgroundColor:'#2e86c188',borderRadius:3},
+        {label:'Compra sugerida',data:top15.map(a=>a.compra),backgroundColor:'#e24b4a99',borderRadius:3},
+        {label:'Óptimo',data:top15.map(a=>a.optimo),type:'line',borderColor:'#27ae60',borderWidth:2,pointRadius:3,backgroundColor:'transparent'},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}}},
+        scales:{x:{grid:{display:false},ticks:{...T,font:{size:9}}},y:{grid:{color:G},ticks:T}}}});
+
+    // Semáforo donut
+    const sema={R:cli.arts.filter(a=>a.semaforo==='ROJO').length,A:cli.arts.filter(a=>a.semaforo==='AMARILLO').length,V:cli.arts.filter(a=>a.semaforo==='VERDE').length};
+    mk('chartR5CliSema',{type:'doughnut',data:{
+      labels:['ROJO (<7d)','AMARILLO (7-30d)','VERDE (≥30d)'],
+      datasets:[{data:[sema.R,sema.A,sema.V],
+        backgroundColor:['#e24b4a88','#f59e0b88','#22c55e88'],
+        borderColor:'#161b22',borderWidth:2,hoverOffset:5}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+        plugins:{legend:{position:'right'},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} arts`}}}}});
+  };
+

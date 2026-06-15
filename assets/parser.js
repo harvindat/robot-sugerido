@@ -1,10 +1,24 @@
 /* ═══════════════════════════════════════════════════════════
-   parser.js  —  Lee ROBOTBETO.xlsx y genera los 3 análisis
-   Expone: window.RB = { inv, catalogo, inactivos, clientes,
-                         r1, r2, r3, kpis }
+   parser.js v3.0 — Robot Sugerido · Harvin Distribuciones
+   ───────────────────────────────────────────────────────────
+   Expone: window.RB = {
+     inv, catalogo, inactivos, clientes,
+     precioMap,          ← precio promedio ponderado x artículo
+     r1, r2, r3, r4,
+     r5,                 ← nuevo: sugerido de compra por demanda
+     kpis, periodo
+   }
+   Novedades v3:
+   · precioMap: precio_unit = suma(venta) / suma(uds) por artículo
+   · R1/R2/R3/R4 enriquecidos con precio y valor_sugerido
+   · R5 global (almacén) + per-cliente con cobertura/semáforo/ABC
+   · Auto-detección de días del período desde header VCLIE
+   · Fix EXIVAL footer rows ("Total X artículos")
+   · Cache-busting fetch + Uint8Array para máx. compatibilidad
    ═══════════════════════════════════════════════════════════ */
 (function () {
 
+  /* ── Utilidades ─────────────────────────────────────────── */
   function pn(v) {
     if (v === null || v === undefined) return 0;
     const n = parseFloat(String(v).replace(/[,$]/g, '').trim());
@@ -13,248 +27,486 @@
   function ps(v) { return (v === null || v === undefined) ? '' : String(v).trim(); }
   function arr2d(ws) { return XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true }); }
 
-  /* ── EXIVAL ─ inventario actual ─────────────────────── */
+  /* ── Detectar días del período desde encabezado VCLIE ───── */
+  function detectPeriodoDias(raw) {
+    for (let i = 0; i < Math.min(raw.length, 10); i++) {
+      const r = raw[i];
+      if (!r) continue;
+      const v = ps(r[0]);
+      // "Periodo del 01/jun./2026 al 15/jun./2026"
+      const m = v.match(/del\s+(\d+)\/(\w+)\.?\/(\d+)\s+al\s+(\d+)\/(\w+)\.?\/(\d+)/i);
+      if (m) {
+        const meses = { ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, oct:9, nov:10, dic:11 };
+        const d1 = new Date(+m[3], meses[m[2].toLowerCase().slice(0,3)] ?? 0, +m[1]);
+        const d2 = new Date(+m[6], meses[m[5].toLowerCase().slice(0,3)] ?? 0, +m[4]);
+        const dias = Math.round((d2 - d1) / 86400000) + 1;
+        if (dias > 0) return { dias, texto: v.replace(/.*Periodo/i, 'Periodo') };
+      }
+    }
+    return { dias: 15, texto: 'Período no detectado' };
+  }
+
+  /* ── EXIVAL ─ inventario actual ─────────────────────────── */
   function parseExival(wb) {
     const raw = arr2d(wb.Sheets['EXIVAL']);
     const inv = {};
     for (let i = 6; i < raw.length; i++) {
-      const clave = ps(raw[i][0]);
+      const row = raw[i];
+      if (!row) continue;
+      const clave = ps(row[0]);
       if (!clave) continue;
-      inv[clave] = { exist: pn(raw[i][3]), desc: ps(raw[i][1]) };
+      // Excluir filas footer del reporte ("Total X artículos", "X artículos sin existencia")
+      const cl = clave.toLowerCase();
+      if (cl.startsWith('total') || cl.includes('artículo') || cl.includes('articulo')) continue;
+      inv[clave] = { exist: pn(row[3]), desc: ps(row[1]) };
     }
     return inv;
   }
 
-  /* ── AL ─ catálogo con líneas ───────────────────────── */
+  /* ── AL ─ catálogo con líneas ───────────────────────────── */
   function parseCatalogo(wb) {
     const raw = arr2d(wb.Sheets['AL']);
     const cat = {};
     for (let i = 1; i < raw.length; i++) {
-      const clave = ps(raw[i][0]);
+      const row = raw[i];
+      if (!row) continue;
+      const clave = ps(row[0]);
       if (!clave) continue;
       cat[clave] = {
-        desc:   ps(raw[i][1]),
-        linea:  ps(raw[i][2]),
-        estatus:ps(raw[i][9]),
-        ult_compra: ps(raw[i][8]),
+        desc:       ps(row[1]),
+        linea:      ps(row[2]),
+        estatus:    ps(row[9]),
+        ult_compra: ps(row[8]),
       };
     }
     return cat;
   }
 
-  /* ── INA ─ artículos inactivos ──────────────────────── */
-  // NOTA: NO usamos la hoja INA del Excel porque su criterio de "inactividad"
-  // puede diferir del período de VCLIE (ej: INA con venta máxima=0 histórico
-  // vs VCLIE con ventas del período Ene-May). Esto causa que artículos que SÍ
-  // se vendieron en el período queden excluidos de los sugeridos.
-  //
-  // SOLUCIÓN: calculamos inactivos directamente desde VCLIE.
-  // Un artículo es "inactivo" si NO aparece en ninguna venta del período.
-  // Esto garantiza coherencia total entre los 4 filtros de R1/R2/R3.
-  function parseInactivos(wb) {
-    // Construir set de artículos con venta real en el período (desde VCLIE)
-    const rawV = arr2d(wb.Sheets['VCLIE']);
+  /* ── PRECIO MAP ─ precio unitario promedio ponderado ─────── */
+  /* precio_unit = suma(venta_positiva) / suma(uds_positivas) */
+  function parsePrecioMap(rawV) {
+    const acc = {}; // clave -> {sumVenta, sumUds}
+    for (let i = 0; i < rawV.length; i++) {
+      const r = rawV[i];
+      if (!r) continue;
+      const clave = ps(r[0]);
+      if (!clave) continue;
+      if (r[12] === null || r[12] === undefined || typeof r[12] === 'string') continue;
+      const venta = pn(r[12]);
+      const uds   = pn(r[14]);
+      if (uds <= 0 || venta <= 0) continue; // solo positivos (excluye devoluciones)
+      if (!acc[clave]) acc[clave] = { sumV: 0, sumU: 0 };
+      acc[clave].sumV += venta;
+      acc[clave].sumU += uds;
+    }
+    const pm = {};
+    Object.entries(acc).forEach(([k, v]) => {
+      if (v.sumU > 0) pm[k] = +(v.sumV / v.sumU).toFixed(2);
+    });
+    return pm;
+  }
+
+  /* ── INACTIVOS ─ artículos sin venta en el período ─────── */
+  function parseInactivos(rawV, rawE) {
     const conVenta = new Set();
     for (let i = 0; i < rawV.length; i++) {
-      const clave = ps(rawV[i][0]);
-      const venta = rawV[i][12];
-      // Solo artículos con venta numérica > 0 (excluye encabezados y totales)
-      if (clave && typeof venta === 'number' && venta > 0) {
-        conVenta.add(clave);
-      }
+      const r = rawV[i];
+      if (!r) continue;
+      const clave = ps(r[0]);
+      const venta = r[12];
+      if (clave && typeof venta === 'number' && venta > 0) conVenta.add(clave);
     }
-
-    // Un artículo es "inactivo" si existe en el inventario pero NO tiene venta en el período
-    // Construir INA como el complemento: todos los artículos del catálogo sin venta
-    const rawE = arr2d(wb.Sheets['EXIVAL']);
     const ina = new Set();
     for (let i = 6; i < rawE.length; i++) {
-      const clave = ps(rawE[i][0]);
-      if (clave && !conVenta.has(clave)) {
-        ina.add(clave);
-      }
+      const row = rawE[i];
+      if (!row) continue;
+      const clave = ps(row[0]);
+      if (!clave) continue;
+      const cl = clave.toLowerCase();
+      if (cl.startsWith('total') || cl.includes('artículo') || cl.includes('articulo')) continue;
+      if (!conVenta.has(clave)) ina.add(clave);
     }
     return ina;
   }
 
-  /* ── VCLIE ─ ventas por cliente ─────────────────────── */
-  function parseVclie(wb) {
-    const raw = arr2d(wb.Sheets['VCLIE']);
-    // filas donde col[3] tiene nombre de cliente
-    const cliRows = raw.map((r,i) => ({i, nombre: ps(r[3])}))
-                       .filter(x => x.nombre && x.nombre !== 'nan' && x.nombre !== 'Cliente');
+  /* ── VCLIE ─ ventas por cliente ─────────────────────────── */
+  function parseVclie(rawV, precioMap) {
+    const cliRows = [];
+    for (let i = 0; i < rawV.length; i++) {
+      const r = rawV[i];
+      if (!r) continue;
+      const nombre = ps(r[3]);
+      if (nombre && nombre !== 'nan' && nombre !== 'Cliente') cliRows.push({ i, nombre });
+    }
 
     const clientes = [];
-    cliRows.forEach((cr, idx) => {
-      const fin  = idx + 1 < cliRows.length ? cliRows[idx+1].i : raw.length;
+    for (let ci = 0; ci < cliRows.length; ci++) {
+      const cr  = cliRows[ci];
+      const fin = ci + 1 < cliRows.length ? cliRows[ci + 1].i : rawV.length;
       const arts = [];
+
       for (let j = cr.i + 2; j < fin; j++) {
-        const r    = raw[j];
+        const r     = rawV[j];
+        if (!r) continue;
         const clave = ps(r[0]);
-        // Filtro robusto: salta filas de sub-encabezado ('Artículo','Venta','Unidades')
-        // que aparecen cuando un cliente tiene múltiples secciones en VCLIE.
-        // Regla: col[12] siempre es numérico en artículos reales; es string en encabezados.
         if (!clave) continue;
         if (r[12] === null || r[12] === undefined) continue;
-        if (typeof r[12] === 'string') continue;   // ← encabezado de sección, no artículo real
-        if (isNaN(+r[12])) continue;               // ← por si acaso llega otro tipo no numérico
-        arts.push({ clave, desc: ps(r[4]), venta: pn(r[12]), uds: pn(r[14]) });
+        if (typeof r[12] === 'string') continue;
+        if (isNaN(+r[12])) continue;
+        const venta = pn(r[12]);
+        const uds   = pn(r[14]);
+        // Precio unitario: precio real pagado por este cliente en esta línea
+        const precio_unit = (uds !== 0) ? +(Math.abs(venta) / Math.abs(uds)).toFixed(2) : (precioMap[clave] || 0);
+        arts.push({ clave, desc: ps(r[4]), venta, uds, precio_unit });
       }
+
       clientes.push({
-        id: ps(raw[cr.i][0]),
-        nombre: cr.nombre,
+        id:         ps(rawV[cr.i][0]),
+        nombre:     cr.nombre,
         arts,
         ventaTotal: arts.reduce((s, a) => s + a.venta, 0),
         udsTotal:   arts.reduce((s, a) => s + a.uds,   0),
       });
-    });
+    }
     return clientes;
   }
 
-  /* ── ANÁLISIS R1 ─ sugerido por líneas compradas ────── */
-  function buildR1(clientes, inv, catalogo, inactivos) {
+  /* ── R1 ─ sugerido por líneas compradas ─────────────────── */
+  function buildR1(clientes, inv, catalogo, inactivos, precioMap) {
     const activos = new Set(
       Object.keys(inv).filter(k => inv[k].exist > 0 && !inactivos.has(k))
     );
-
     return clientes.map(cli => {
-      const compradas = new Set(cli.arts.map(a => catalogo[a.clave]?.linea).filter(Boolean));
+      const compradas = new Set(cli.arts.map(a => (catalogo[a.clave] || {}).linea).filter(Boolean));
       const yaCompro  = new Set(cli.arts.map(a => a.clave));
-
-      // Sugeridos: activos, en líneas que compra, que no haya comprado
-      const sugeridos = [...activos].filter(k => {
-        const linea = catalogo[k]?.linea;
-        return linea && compradas.has(linea) && !yaCompro.has(k);
-      }).map(k => ({
-        clave: k,
-        desc:  catalogo[k].desc,
-        linea: catalogo[k].linea,
-        exist: inv[k].exist,
-      }));
-
+      const sugeridos = [];
+      activos.forEach(k => {
+        const cat   = catalogo[k] || {};
+        const linea = cat.linea || '';
+        if (!linea || !compradas.has(linea) || yaCompro.has(k)) return;
+        const precio = precioMap[k] || 0;
+        sugeridos.push({
+          clave:    k,
+          desc:     cat.desc,
+          linea:    cat.linea,
+          exist:    inv[k].exist,
+          precio,
+          valorSug: +(precio * inv[k].exist).toFixed(0),
+        });
+      });
       return {
-        nombre:    cli.nombre,
-        ventaTotal:cli.ventaTotal,
+        nombre:       cli.nombre,
+        ventaTotal:   cli.ventaTotal,
         lineasCompra: [...compradas],
         sugeridos,
+        valorTotalSug: sugeridos.reduce((s, a) => s + a.valorSug, 0),
       };
     });
   }
 
-  /* ── ANÁLISIS R2 ─ top 20% rotación ─────────────────── */
-  function buildR2(clientes, inv, catalogo, inactivos) {
-    // Consolidar unidades vendidas por artículo en todo el período
+  /* ── R2 ─ top N% rotación ───────────────────────────────── */
+  function buildR2(clientes, inv, catalogo, inactivos, precioMap) {
     const rotMap = {};
-    clientes.forEach(cli => {
-      cli.arts.forEach(a => {
-        rotMap[a.clave] = (rotMap[a.clave] || 0) + a.uds;
-      });
-    });
-
-    // Ordenar y tomar top 20%
-    const sorted   = Object.entries(rotMap).sort((a,b) => b[1]-a[1]);
+    clientes.forEach(cli => cli.arts.forEach(a => {
+      if (a.uds > 0) rotMap[a.clave] = (rotMap[a.clave] || 0) + a.uds;
+    }));
+    const sorted   = Object.entries(rotMap).sort((a, b) => b[1] - a[1]);
     const top20n   = Math.ceil(sorted.length * 0.20);
     const top20set = new Set(sorted.slice(0, top20n).map(x => x[0]));
-
-    // Top 20% con stock y activos
-    const sugeribles = [...top20set].filter(k => inv[k]?.exist > 0 && !inactivos.has(k));
-    const sugSet     = new Set(sugeribles);
-
-    // Score de rotación (rango 1-10)
-    const maxRot = sorted[0]?.[1] || 1;
+    const activos  = new Set(Object.keys(inv).filter(k => inv[k].exist > 0 && !inactivos.has(k)));
+    const sugeribles = [...top20set].filter(k => activos.has(k));
+    const maxRot   = sorted[0] ? sorted[0][1] : 1;
     const scoreMap = {};
     sorted.forEach(([k, v], i) => {
       scoreMap[k] = { score: +(v / maxRot * 10).toFixed(1), rank: i + 1, uds: v };
     });
-
     return clientes.map(cli => {
-      const compradas = new Set(cli.arts.map(a => catalogo[a.clave]?.linea).filter(Boolean));
+      const compradas = new Set(cli.arts.map(a => (catalogo[a.clave] || {}).linea).filter(Boolean));
       const yaCompro  = new Set(cli.arts.map(a => a.clave));
-
-      const sugeridos = sugeribles.filter(k => {
-        const linea = catalogo[k]?.linea;
-        return linea && compradas.has(linea) && !yaCompro.has(k);
-      }).map(k => ({
-        clave: k,
-        desc:  catalogo[k].desc,
-        linea: catalogo[k].linea,
-        exist: inv[k].exist,
-        score: scoreMap[k]?.score || 0,
-        rank:  scoreMap[k]?.rank  || 0,
-        udsTotal: rotMap[k] || 0,
-      })).sort((a,b) => b.score - a.score);
-
+      const sugeridos = sugeribles
+        .filter(k => {
+          const linea = (catalogo[k] || {}).linea || '';
+          return linea && compradas.has(linea) && !yaCompro.has(k);
+        })
+        .map(k => {
+          const sm     = scoreMap[k] || {};
+          const precio = precioMap[k] || 0;
+          return {
+            clave:    k,
+            desc:     (catalogo[k] || {}).desc,
+            linea:    (catalogo[k] || {}).linea,
+            exist:    inv[k].exist,
+            score:    sm.score  || 0,
+            rank:     sm.rank   || 0,
+            udsTotal: rotMap[k] || 0,
+            precio,
+            valorSug: +(precio * inv[k].exist).toFixed(0),
+          };
+        })
+        .sort((a, b) => b.score - a.score);
       return {
-        nombre:    cli.nombre,
-        ventaTotal:cli.ventaTotal,
-        lineasCompra: [...compradas],
+        nombre:        cli.nombre,
+        ventaTotal:    cli.ventaTotal,
+        lineasCompra:  [...compradas],
         sugeridos,
         scoreMap,
+        valorTotalSug: sugeridos.reduce((s, a) => s + a.valorSug, 0),
       };
     });
   }
 
-  /* ── ANÁLISIS R3 ─ líneas NO trabajadas ─────────────── */
-  function buildR3(clientes, inv, catalogo, inactivos) {
-    const todasLineas = [...new Set(
-      Object.values(catalogo).map(v => v.linea).filter(Boolean)
-    )].sort();
-
-    const activos = new Set(
-      Object.keys(inv).filter(k => inv[k].exist > 0 && !inactivos.has(k))
-    );
-
+  /* ── R3 ─ líneas NO trabajadas ──────────────────────────── */
+  function buildR3(clientes, inv, catalogo, inactivos, precioMap) {
+    const todasLineas = [...new Set(Object.values(catalogo).map(v => v.linea).filter(Boolean))].sort();
+    const activos = new Set(Object.keys(inv).filter(k => inv[k].exist > 0 && !inactivos.has(k)));
     return clientes.map(cli => {
-      const compradas  = new Set(cli.arts.map(a => catalogo[a.clave]?.linea).filter(Boolean));
-      const faltantes  = todasLineas.filter(l => !compradas.has(l));
-
-      const sugeridos = [...activos].filter(k => {
-        const linea = catalogo[k]?.linea;
-        return linea && faltantes.includes(linea);
-      }).map(k => ({
-        clave:  k,
-        desc:   catalogo[k].desc,
-        linea:  catalogo[k].linea,
-        exist:  inv[k].exist,
-        sug20:  Math.max(1, Math.ceil(inv[k].exist * 0.20)),
-      })).sort((a,b) => a.linea.localeCompare(b.linea) || a.clave.localeCompare(b.clave));
-
+      const compradas = new Set(cli.arts.map(a => (catalogo[a.clave] || {}).linea).filter(Boolean));
+      const faltantes = todasLineas.filter(l => !compradas.has(l));
+      const sugeridos = [];
+      activos.forEach(k => {
+        const cat   = catalogo[k] || {};
+        const linea = cat.linea || '';
+        if (!linea || !faltantes.includes(linea)) return;
+        const sug20  = Math.max(1, Math.ceil(inv[k].exist * 0.20));
+        const precio = precioMap[k] || 0;
+        sugeridos.push({
+          clave:    k,
+          desc:     cat.desc,
+          linea:    cat.linea,
+          exist:    inv[k].exist,
+          sug20,
+          precio,
+          valorSug20: +(precio * sug20).toFixed(0),
+        });
+      });
+      sugeridos.sort((a, b) => a.linea.localeCompare(b.linea) || a.clave.localeCompare(b.clave));
       return {
-        nombre:    cli.nombre,
-        ventaTotal:cli.ventaTotal,
-        lineasCompra: [...compradas],
+        nombre:          cli.nombre,
+        ventaTotal:      cli.ventaTotal,
+        lineasCompra:    [...compradas],
         lineasFaltantes: faltantes,
         sugeridos,
-        totalPiezas: sugeridos.reduce((s,a) => s + a.sug20, 0),
+        totalPiezas:     sugeridos.reduce((s, a) => s + a.sug20, 0),
+        valorTotalSug:   sugeridos.reduce((s, a) => s + a.valorSug20, 0),
       };
     });
   }
 
-  /* ── KPIs globales ──────────────────────────────────── */
-  function buildKpis(inv, catalogo, inactivos, clientes, r1, r2) {
-    const totalStock    = Object.values(inv).reduce((s,v) => s+v.exist, 0);
-    const artsConStock  = Object.values(inv).filter(v => v.exist > 0).length;
-    const ventaTotal    = clientes.reduce((s,c) => s + c.ventaTotal, 0);
-    const udsTotal      = clientes.reduce((s,c) => s + c.udsTotal,   0);
+  /* ── R4 ─ Top Score Rotación Individual por cliente ──────── */
+  function buildR4(clientes, inv, catalogo) {
+    return clientes.map(cli => {
+      if (!cli.arts.length) return {
+        nombre: cli.nombre, ventaTotal: cli.ventaTotal, udsTotal: 0,
+        arts: [], porLinea: {}, topArts: [], alertasBajo: 0, alertasMedio: 0,
+      };
+      const artsPos  = cli.arts.filter(a => a.uds > 0);
+      const maxUds   = Math.max(...artsPos.map(a => a.uds))   || 1;
+      const maxVenta = Math.max(...artsPos.map(a => a.venta)) || 1;
+
+      const arts = cli.arts.map(a => {
+        const cat   = catalogo[a.clave] || {};
+        const stock = (inv[a.clave] || {}).exist || 0;
+        const scoreUds   = a.uds   > 0 ? a.uds   / maxUds   : 0;
+        const scoreVenta = a.venta > 0 ? a.venta / maxVenta : 0;
+        const score = +((scoreUds * 0.7 + scoreVenta * 0.3) * 10).toFixed(1);
+        const alertaStock = stock < a.uds ? 'BAJO' : stock < a.uds * 2 ? 'MEDIO' : 'OK';
+        return {
+          clave: a.clave,
+          desc:  cat.desc  || a.desc || '',
+          linea: cat.linea || '',
+          uds:   a.uds,
+          venta: a.venta,
+          precio_unit: a.precio_unit,  // precio real pagado por este cliente
+          stock,
+          score,
+          alertaStock,
+          stockSugerido: Math.max(0, Math.ceil(a.uds * 1.5)),
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      const porLinea = {};
+      arts.forEach(a => {
+        if (!a.linea) return;
+        if (!porLinea[a.linea]) porLinea[a.linea] = { uds:0, venta:0, arts:0, scoreMax:0 };
+        porLinea[a.linea].uds    += a.uds;
+        porLinea[a.linea].venta  += a.venta;
+        porLinea[a.linea].arts   += 1;
+        porLinea[a.linea].scoreMax = Math.max(porLinea[a.linea].scoreMax, a.score);
+      });
+
+      return {
+        nombre:       cli.nombre,
+        ventaTotal:   cli.ventaTotal,
+        udsTotal:     cli.udsTotal,
+        arts,
+        porLinea,
+        topArts:      arts.slice(0, 20),
+        alertasBajo:  arts.filter(a => a.alertaStock === 'BAJO').length,
+        alertasMedio: arts.filter(a => a.alertaStock === 'MEDIO').length,
+      };
+    });
+  }
+
+  /* ── R5 ─ Sugerido de Compra por Demanda ────────────────── */
+  /*   factorSeg: 0.0 = solo demanda mensual exacta
+       0.5 (default) = 15 días de colchón extra
+       1.0 = 2 meses de stock total                          */
+  function buildR5(clientes, inv, catalogo, inactivos, precioMap, dias, factorSeg) {
+    if (dias <= 0) dias = 15;
+    if (factorSeg === undefined || factorSeg === null) factorSeg = 0.5;
+
+    /* ── Demanda global por artículo (suma de todos los clientes) ── */
+    const demMap = {};
+    clientes.forEach(cli => {
+      cli.arts.forEach(a => {
+        if (a.uds <= 0) return; // excluir devoluciones
+        if (!demMap[a.clave]) demMap[a.clave] = { uds: 0, venta: 0, clientes: new Set() };
+        demMap[a.clave].uds    += a.uds;
+        demMap[a.clave].venta  += a.venta;
+        demMap[a.clave].clientes.add(cli.nombre);
+      });
+    });
+
+    /* ── Clasificación ABC por venta total del período ── */
+    const sortedVenta = Object.entries(demMap).sort((a, b) => b[1].venta - a[1].venta);
+    const totalV = sortedVenta.reduce((s, [, v]) => s + v.venta, 0);
+    let cumV = 0;
+    sortedVenta.forEach(([k, v]) => {
+      cumV += v.venta;
+      demMap[k].abc = cumV / totalV <= 0.80 ? 'A' : cumV / totalV <= 0.95 ? 'B' : 'C';
+    });
+
+    /* ── Cálculo de cobertura y compra sugerida ── */
+    const arts = [];
+    Object.entries(demMap).forEach(([clave, d]) => {
+      const cat    = catalogo[clave] || {};
+      const exist  = (inv[clave] || {}).exist || 0;
+      const precio = precioMap[clave] || 0;
+      const tasa   = d.uds / dias;                         // uds/día
+      const demMes = tasa * 30;                            // demanda mensual proyectada
+      const optimo = Math.ceil(demMes * (1 + factorSeg));  // stock objetivo
+      const compra = Math.max(0, optimo - exist);
+      const cobert = tasa > 0 ? +(exist / tasa).toFixed(1) : 9999;
+      const semaf  = exist === 0 && d.uds > 0 ? 'ROJO'
+                   : cobert <  7 ? 'ROJO'
+                   : cobert < 30 ? 'AMARILLO'
+                   : 'VERDE';
+
+      arts.push({
+        clave,
+        desc:       cat.desc  || '',
+        linea:      cat.linea || '',
+        udsTotal:   d.uds,
+        ventaTotal: +d.venta.toFixed(2),
+        nClientes:  d.clientes.size,
+        abc:        d.abc,
+        exist,
+        precio,
+        tasa:       +tasa.toFixed(3),
+        demMes:     +demMes.toFixed(1),
+        optimo,
+        compra,
+        cobertura:  cobert,
+        semaforo:   semaf,
+        inversion:  +(compra * precio).toFixed(0),
+        isActivo:   !inactivos.has(clave),
+      });
+    });
+
+    const semOrd = { ROJO: 0, AMARILLO: 1, VERDE: 2 };
+    arts.sort((a, b) => {
+      if (semOrd[a.semaforo] !== semOrd[b.semaforo]) return semOrd[a.semaforo] - semOrd[b.semaforo];
+      return b.compra - a.compra;
+    });
+
+    /* ── Vista por cliente ── */
+    const porCliente = clientes.map(cli => {
+      const cliArts = cli.arts
+        .filter(a => a.uds > 0)
+        .map(a => {
+          const exist  = (inv[a.clave] || {}).exist || 0;
+          const precio = a.precio_unit || precioMap[a.clave] || 0;
+          const tasa   = a.uds / dias;
+          const demMes = tasa * 30;
+          const optimo = Math.ceil(demMes * (1 + factorSeg));
+          const compra = Math.max(0, optimo - exist);
+          const cobert = tasa > 0 ? +(exist / tasa).toFixed(1) : 9999;
+          const semaf  = exist === 0 ? 'ROJO'
+                       : cobert <  7 ? 'ROJO'
+                       : cobert < 30 ? 'AMARILLO'
+                       : 'VERDE';
+          return {
+            clave:     a.clave,
+            desc:      (catalogo[a.clave] || {}).desc || a.desc || '',
+            linea:     (catalogo[a.clave] || {}).linea || '',
+            uds:       a.uds,
+            venta:     a.venta,
+            precio,
+            exist,
+            tasa:      +tasa.toFixed(3),
+            demMes:    +demMes.toFixed(1),
+            optimo,
+            compra,
+            cobertura: cobert,
+            semaforo:  semaf,
+            inversion: +(compra * precio).toFixed(0),
+          };
+        });
+      cliArts.sort((a, b) => {
+        if (semOrd[a.semaforo] !== semOrd[b.semaforo]) return semOrd[a.semaforo] - semOrd[b.semaforo];
+        return b.compra - a.compra;
+      });
+      return {
+        nombre:         cli.nombre,
+        ventaTotal:     cli.ventaTotal,
+        arts:           cliArts,
+        totalCompra:    cliArts.reduce((s, a) => s + a.compra, 0),
+        totalInversion: cliArts.reduce((s, a) => s + a.inversion, 0),
+        urgentes:       cliArts.filter(a => a.semaforo === 'ROJO').length,
+      };
+    });
+
+    return {
+      arts,
+      porCliente,
+      dias,
+      factorSeg,
+      // KPIs globales
+      totalArts:      arts.length,
+      totalCompra:    arts.reduce((s, a) => s + a.compra, 0),
+      totalInversion: arts.reduce((s, a) => s + a.inversion, 0),
+      rojos:          arts.filter(a => a.semaforo === 'ROJO').length,
+      amarillos:      arts.filter(a => a.semaforo === 'AMARILLO').length,
+      verdes:         arts.filter(a => a.semaforo === 'VERDE').length,
+      artsA:          arts.filter(a => a.abc === 'A').length,
+      artsSinStock:   arts.filter(a => a.exist === 0).length,
+    };
+  }
+
+  /* ── KPIs globales ──────────────────────────────────────── */
+  function buildKpis(inv, catalogo, inactivos, clientes, r1, r2, r5) {
+    const totalStock   = Object.values(inv).reduce((s, v) => s + v.exist, 0);
+    const artsConStock = Object.values(inv).filter(v => v.exist > 0).length;
+    const ventaTotal   = clientes.reduce((s, c) => s + c.ventaTotal, 0);
+    const udsTotal     = clientes.reduce((s, c) => s + c.udsTotal,   0);
 
     const rotMap = {};
     clientes.forEach(cli => cli.arts.forEach(a => {
-      rotMap[a.clave] = (rotMap[a.clave] || 0) + a.uds;
+      if (a.uds > 0) rotMap[a.clave] = (rotMap[a.clave] || 0) + a.uds;
     }));
-    const sorted  = Object.entries(rotMap).sort((a,b)=>b[1]-a[1]);
+    const sorted  = Object.entries(rotMap).sort((a, b) => b[1] - a[1]);
     const top20n  = Math.ceil(sorted.length * 0.20);
-    const sugerR1 = r1.reduce((s,c) => s + c.sugeridos.length, 0);
-    const sugerR2 = r2.reduce((s,c) => s + c.sugeridos.length, 0);
+    const sugerR1 = r1.reduce((s, c) => s + c.sugeridos.length, 0);
+    const sugerR2 = r2.reduce((s, c) => s + c.sugeridos.length, 0);
 
-    // Ventas por línea
     const ventaLinea = {};
     clientes.forEach(cli => cli.arts.forEach(a => {
-      const linea = catalogo[a.clave]?.linea || 'SIN LÍNEA';
+      const linea = (catalogo[a.clave] || {}).linea || 'SIN LÍNEA';
       ventaLinea[linea] = (ventaLinea[linea] || 0) + a.venta;
     }));
 
-    // Top clientes
-    const topClientes = [...clientes].sort((a,b) => b.ventaTotal - a.ventaTotal);
+    const topClientes = [...clientes].sort((a, b) => b.ventaTotal - a.ventaTotal);
+    const rotPct = totalStock > 0 ? +(udsTotal / totalStock * 100).toFixed(1) : 0;
 
     return {
       totalStock, artsConStock,
@@ -263,105 +515,81 @@
       ventaTotal,     udsTotal,
       artsVendidos:   sorted.length,
       top20n,         sugerR1, sugerR2,
-      rotPct:         +(udsTotal / totalStock * 100).toFixed(1),
+      rotPct,
       ventaLinea,     topClientes,
+      // R5 KPIs
+      r5Rojos:        r5 ? r5.rojos         : 0,
+      r5Inversion:    r5 ? r5.totalInversion : 0,
+      r5TotalCompra:  r5 ? r5.totalCompra    : 0,
     };
   }
 
-  /* ── Carga principal ─────────────────────────────────── */
+  /* ── Carga principal ─────────────────────────────────────── */
   async function load() {
     const loader = document.getElementById('loader');
     const msg    = loader.querySelector('p');
     try {
       msg.textContent = 'Cargando ROBOTBETO.xlsx…';
-      const resp = await fetch('./data/ROBOTBETO.xlsx');
-      if (!resp.ok) throw new Error('No se pudo cargar data/ROBOTBETO.xlsx (HTTP '+resp.status+')');
+      const resp = await fetch('./data/ROBOTBETO.xlsx?v=' + Date.now());
+      if (!resp.ok) throw new Error('No se pudo cargar ROBOTBETO.xlsx (HTTP ' + resp.status + ')');
 
-      msg.textContent = 'Leyendo inventario…';
-      const buf = await resp.arrayBuffer();
-      const wb  = XLSX.read(buf, { type:'array', raw:true, cellDates:false });
+      msg.textContent = 'Leyendo datos…';
+      const buf  = await resp.arrayBuffer();
+      const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', raw: true, cellDates: false });
 
-      msg.textContent = 'Procesando catálogo…';
+      const missing = ['EXIVAL', 'VCLIE', 'AL'].filter(s => !wb.Sheets[s]);
+      if (missing.length) throw new Error('Hojas faltantes: ' + missing.join(', '));
+
+      // Leer hojas en bruto una sola vez
+      const rawV = arr2d(wb.Sheets['VCLIE']);
+      const rawE = arr2d(wb.Sheets['EXIVAL']);
+
+      msg.textContent = 'Procesando inventario…';
       const inv       = parseExival(wb);
       const catalogo  = parseCatalogo(wb);
-      const inactivos = parseInactivos(wb);
 
-      msg.textContent = 'Analizando ventas…';
-      const clientes  = parseVclie(wb);
+      msg.textContent = 'Calculando precios…';
+      const precioMap = parsePrecioMap(rawV);
+      const periodo   = detectPeriodoDias(rawV);
+      const inactivos = parseInactivos(rawV, rawE);
 
-      msg.textContent = 'Calculando sugeridos…';
-      const r1 = buildR1(clientes, inv, catalogo, inactivos);
-      const r2 = buildR2(clientes, inv, catalogo, inactivos);
-      const r3 = buildR3(clientes, inv, catalogo, inactivos);
-      const kpis = buildKpis(inv, catalogo, inactivos, clientes, r1, r2);
+      msg.textContent = 'Analizando ventas por cliente…';
+      const clientes  = parseVclie(rawV, precioMap);
 
+      msg.textContent = 'Calculando R1/R2/R3/R4…';
+      const r1 = buildR1(clientes, inv, catalogo, inactivos, precioMap);
+      const r2 = buildR2(clientes, inv, catalogo, inactivos, precioMap);
+      const r3 = buildR3(clientes, inv, catalogo, inactivos, precioMap);
       const r4 = buildR4(clientes, inv, catalogo);
-      window.RB = { inv, catalogo, inactivos, clientes, r1, r2, r3, r4, kpis };
+
+      msg.textContent = 'Calculando R5 — Sugerido de compra…';
+      const r5   = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, 0.5);
+      const kpis = buildKpis(inv, catalogo, inactivos, clientes, r1, r2, r5);
+
+      window.RB = { inv, catalogo, inactivos, clientes, precioMap, r1, r2, r3, r4, r5, kpis, periodo };
+      window.RB._r2pct = 20;
+
+      // Exponer recálculo de R5 para el slider de la UI
+      window.recalcularR5 = function (factorSeg) {
+        window.RB.r5 = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, factorSeg);
+        document.dispatchEvent(new CustomEvent('r5updated', { detail: window.RB.r5 }));
+      };
 
       await new Promise(r => setTimeout(r, 150));
       loader.style.display = 'none';
       document.getElementById('app').style.display = 'block';
       document.dispatchEvent(new Event('rbready'));
 
-    } catch(e) {
+    } catch (e) {
       msg.textContent = '';
       const d = document.createElement('div');
       d.className = 'err';
-      d.innerHTML = '<strong>⚠️ Error</strong><br><br>'+e.message
-        +'<br><br><em>Usa GitHub Pages, python -m http.server 8080, o Live Server en VS Code.</em>';
+      d.innerHTML = '<strong>⚠️ Error</strong><br><br>' + e.message
+        + '<br><br><em>Abre la consola del navegador (F12) para más detalles.</em>'
+        + '<br><em>Requiere servidor HTTP: python -m http.server 8080 o Live Server.</em>';
       loader.appendChild(d);
-      console.error(e);
+      console.error('[RB]', e);
     }
-  }
-
-  /* ── ANÁLISIS R4 ─ Top Score Rotación Individual por Cliente ── */
-  function buildR4(clientes, inv, catalogo) {
-    return clientes.map(cli => {
-      if (!cli.arts.length) return { nombre: cli.nombre, ventaTotal: cli.ventaTotal, arts: [] };
-
-      const maxUds   = Math.max(...cli.arts.map(a => a.uds))   || 1;
-      const maxVenta = Math.max(...cli.arts.map(a => a.venta)) || 1;
-
-      const arts = cli.arts.map(a => {
-        const linea  = catalogo[a.clave]?.linea || '';
-        const desc   = catalogo[a.clave]?.desc  || a.desc || '';
-        const stock  = inv[a.clave]?.exist ?? 0;
-        // Score compuesto: 70% unidades + 30% venta (ambos normalizados)
-        const scoreUds   = a.uds   / maxUds;
-        const scoreVenta = a.venta / maxVenta;
-        const score = +((scoreUds * 0.7 + scoreVenta * 0.3) * 10).toFixed(1);
-        // Alerta de stock: si stock < uds compradas → riesgo de quiebre
-        const alertaStock = stock < a.uds ? 'BAJO' : stock < a.uds * 2 ? 'MEDIO' : 'OK';
-        return {
-          clave: a.clave, desc, linea,
-          uds: a.uds, venta: a.venta,
-          stock, score, alertaStock,
-          stockSugerido: Math.ceil(a.uds * 1.5), // sugerir 1.5x lo comprado
-        };
-      }).sort((a, b) => b.score - a.score);
-
-      // Agrupar por línea para gráficas
-      const porLinea = {};
-      arts.forEach(a => {
-        if (!a.linea) return;
-        if (!porLinea[a.linea]) porLinea[a.linea] = { uds: 0, venta: 0, arts: 0, scoreMax: 0 };
-        porLinea[a.linea].uds    += a.uds;
-        porLinea[a.linea].venta  += a.venta;
-        porLinea[a.linea].arts   += 1;
-        porLinea[a.linea].scoreMax = Math.max(porLinea[a.linea].scoreMax, a.score);
-      });
-
-      return {
-        nombre:    cli.nombre,
-        ventaTotal:cli.ventaTotal,
-        udsTotal:  cli.udsTotal,
-        arts,
-        porLinea,
-        topArts:   arts.slice(0, 20),
-        alertasBajo: arts.filter(a => a.alertaStock === 'BAJO').length,
-        alertasMedio: arts.filter(a => a.alertaStock === 'MEDIO').length,
-      };
-    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);

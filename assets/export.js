@@ -405,10 +405,148 @@
   }
 
   /* ── Exponer funciones globales ───────────── */
+
+  /* ═══════════════════════════════════════════════
+     EXPORTAR R5 GLOBAL — Orden de compra almacén
+  ═══════════════════════════════════════════════ */
+  function exportR5Global(){
+    const {r5,periodo} = window.RB;
+    if(!r5) return;
+    const arts = r5.arts.filter(a=>a.compra>0||a.semaforo==='ROJO');
+
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    let r = 0;
+
+    const S5={
+      title: { font:{bold:true,sz:13,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center',vertical:'center'}, border:border() },
+      sub:   { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1F618D'}}, alignment:{horizontal:'center',vertical:'center'}, border:border() },
+      hdr:   { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center',vertical:'center',wrapText:true}, border:border() },
+      rojo:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'C0392B'}}, alignment:{horizontal:'center'}, border:border() },
+      amar:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'9A7D0A'}}, alignment:{horizontal:'center'}, border:border() },
+      verd:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1E8449'}}, alignment:{horizontal:'center'}, border:border() },
+      abcA:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'6C3483'}}, alignment:{horizontal:'center'}, border:border() },
+      abcB:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center'}, border:border() },
+      abcC:  { font:{sz:9, color:{rgb:'717D7E'}}, fill:{fgColor:{rgb:'F2F3F4'}}, alignment:{horizontal:'center'}, border:border() },
+      compra:{ font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center'}, border:border() },
+      inv:   { font:{bold:true,sz:9, color:{rgb:'7E5109'}}, fill:{fgColor:{rgb:'FEF5E7'}}, alignment:{horizontal:'right'},  border:border() },
+    };
+
+    const title = `ORDEN DE COMPRA SUGERIDA — R5 — HARVIN DISTRIBUCIONES`;
+    const meta  = `Período: ${periodo.texto||'—'} (${r5.dias} días) · Factor seguridad: ${Math.round(r5.factorSeg*100)}% · Arts. a comprar: ${arts.length} · Total piezas: ${r5.totalCompra.toLocaleString()} · Inversión estimada: $${Math.round(r5.totalInversion).toLocaleString('es-MX')}`;
+
+    setCell(ws,r,0,title,S5.title); merge(ws,r,0,r,12); r++;
+    setCell(ws,r,0,meta, S5.sub);  merge(ws,r,0,r,12); r++;
+    r++;
+
+    const hdrs=['Clave','Descripción','Línea','ABC','Clientes','Uds/Per.','Tasa/día','Stock actual','Cob. días','Compra sugerida','Precio unit. $','Inversión $','Semáforo'];
+    const wc=[12,55,22,6,8,10,10,13,10,16,14,14,10];
+    hdrs.forEach((h,c)=>setCell(ws,r,c,h,S5.hdr)); r++;
+
+    let totalComp=0,totalInv=0;
+    arts.forEach((a,i)=>{
+      const ev=i%2===0;
+      const dA=ev?S.dataA:S.dataB, dAC=ev?S.dataAC:S.dataBC, dAR=ev?S.dataAR:S.dataBR;
+      const semSt=a.semaforo==='ROJO'?S5.rojo:a.semaforo==='AMARILLO'?S5.amar:S5.verd;
+      const abcSt=a.abc==='A'?S5.abcA:a.abc==='B'?S5.abcB:S5.abcC;
+      setCell(ws,r,0,a.clave,   dA);
+      setCell(ws,r,1,a.desc,    dA);
+      setCell(ws,r,2,a.linea,   dAC);
+      setCell(ws,r,3,a.abc,     abcSt);
+      setCell(ws,r,4,a.nClientes,dAC);
+      setCell(ws,r,5,a.udsTotal, dAC);
+      setCell(ws,r,6,a.tasa,     dAC);
+      setCell(ws,r,7,a.exist,    dAC);
+      setCell(ws,r,8,a.cobertura>=9999?'∞':a.cobertura, dAC);
+      setCell(ws,r,9,a.compra,   S5.compra);
+      setCell(ws,r,10,a.precio||0, dAR);
+      setCell(ws,r,11,a.inversion||0, S5.inv);
+      setCell(ws,r,12,a.semaforo, semSt);
+      r++; totalComp+=a.compra; totalInv+=a.inversion||0;
+    });
+
+    r++;
+    setCell(ws,r,0,'TOTALES',S.totalLbl); merge(ws,r,0,r,8);
+    setCell(ws,r,9,totalComp,S.total);
+    setCell(ws,r,10,'',S.total);
+    setCell(ws,r,11,Math.round(totalInv),{...S.total,alignment:{horizontal:'right'}});
+    setCell(ws,r,12,'',S.total);
+
+    ws['!cols']=wc.map(w=>({wpx:w*6}));
+    autoRange(ws,r,12);
+    XLSX.utils.book_append_sheet(wb,ws,'R5 Orden de Compra');
+    XLSX.writeFile(wb,'R5_OrdenCompra_Harvin.xlsx');
+  }
+
+  /* ═══════════════════════════════════════════════
+     EXPORTAR R5 POR CLIENTE
+  ═══════════════════════════════════════════════ */
+  function exportR5Cliente(nombre){
+    const {r5,periodo} = window.RB;
+    if(!r5||!nombre) return;
+    const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
+    const arts=cli.arts.filter(a=>a.compra>0||a.semaforo==='ROJO');
+
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    let r = 0;
+
+    const S5c={
+      title: { font:{bold:true,sz:13,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center',vertical:'center'}, border:border() },
+      sub:   { font:{bold:true,sz:11,color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1F618D'}}, alignment:{horizontal:'center',vertical:'center'}, border:border() },
+      hdr:   { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center',vertical:'center',wrapText:true}, border:border() },
+      rojo:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'C0392B'}}, alignment:{horizontal:'center'}, border:border() },
+      amar:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'9A7D0A'}}, alignment:{horizontal:'center'}, border:border() },
+      verd:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1E8449'}}, alignment:{horizontal:'center'}, border:border() },
+      comp:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center'}, border:border() },
+      inv:   { font:{bold:true,sz:9, color:{rgb:'7E5109'}}, fill:{fgColor:{rgb:'FEF5E7'}}, alignment:{horizontal:'right'},  border:border() },
+    };
+
+    setCell(ws,r,0,`R5 — ANÁLISIS DE DEMANDA — ${nombre.toUpperCase()}`,S5c.title); merge(ws,r,0,r,10); r++;
+    setCell(ws,r,0,`Período: ${periodo.texto||'—'} · Arts.: ${cli.arts.length} · Urgentes: ${cli.urgentes} · Compra total: ${cli.totalCompra} pzas · Inversión: $${Math.round(cli.totalInversion).toLocaleString('es-MX')}`,S5c.sub); merge(ws,r,0,r,10); r++;
+    r++;
+
+    const hdrs=['Clave','Descripción','Línea','Uds/Per.','Tasa/día','Stock actual','Cob. días','Compra sugerida','Precio real $','Inversión $','Semáforo'];
+    const wc=[12,55,22,10,10,13,10,16,14,14,10];
+    hdrs.forEach((h,c)=>setCell(ws,r,c,h,S5c.hdr)); r++;
+
+    arts.forEach((a,i)=>{
+      const ev=i%2===0;
+      const dA=ev?S.dataA:S.dataB, dAC=ev?S.dataAC:S.dataBC, dAR=ev?S.dataAR:S.dataBR;
+      const semSt=a.semaforo==='ROJO'?S5c.rojo:a.semaforo==='AMARILLO'?S5c.amar:S5c.verd;
+      setCell(ws,r,0,a.clave,   dA);
+      setCell(ws,r,1,a.desc,    dA);
+      setCell(ws,r,2,a.linea,   dAC);
+      setCell(ws,r,3,a.uds,     dAC);
+      setCell(ws,r,4,a.tasa,    dAC);
+      setCell(ws,r,5,a.exist,   dAC);
+      setCell(ws,r,6,a.cobertura>=9999?'∞':a.cobertura, dAC);
+      setCell(ws,r,7,a.compra,  S5c.comp);
+      setCell(ws,r,8,a.precio||0, dAR);
+      setCell(ws,r,9,a.inversion||0, S5c.inv);
+      setCell(ws,r,10,a.semaforo, semSt);
+      r++;
+    });
+
+    r++;
+    setCell(ws,r,0,'TOTALES',S.totalLbl); merge(ws,r,0,r,6);
+    setCell(ws,r,7,cli.totalCompra,S.total);
+    setCell(ws,r,8,'',S.total);
+    setCell(ws,r,9,Math.round(cli.totalInversion),{...S.total,alignment:{horizontal:'right'}});
+    setCell(ws,r,10,'',S.total);
+
+    ws['!cols']=wc.map(w=>({wpx:w*6}));
+    autoRange(ws,r,10);
+    XLSX.utils.book_append_sheet(wb,ws,'R5 Cliente');
+    XLSX.writeFile(wb,`R5_${nombre.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)}.xlsx`);
+  }
+
   window.exportR1       = exportR1;
   window.exportR4       = exportR4;
   window.exportR2       = exportR2;
   window.exportR3       = exportR3;
   window.exportResumen  = exportResumen;
+  window.exportR5Global  = exportR5Global;
+  window.exportR5Cliente = exportR5Cliente;
 
 })();
