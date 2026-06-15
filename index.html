@@ -418,6 +418,15 @@ function switchR5View(v, btn){
   document.querySelectorAll('.r5-subbtn').forEach(el=>el.classList.remove('on'));
   document.getElementById('r5-view-'+v).classList.add('on');
   btn.classList.add('on');
+  // Al hacer visible la vista, redibujar las gráficas (Chart.js no mide canvas oculto)
+  setTimeout(function(){
+    if(v==='cliente'){
+      var sel=document.getElementById('sel-cliente-r5');
+      if(sel && sel.value && window.buildR5CliCharts) window.buildR5CliCharts(sel.value);
+    } else if(v==='global'){
+      if(window.buildR5Charts) window.buildR5Charts();
+    }
+  }, 60);
 }
 
 /* ── R5 recálculo ─────────────────────────────── */

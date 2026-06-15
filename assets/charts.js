@@ -265,6 +265,18 @@
   };
 
   document.addEventListener('rbready', window.buildDashboard);
+
+  // Redibujar gráficas visibles al cambiar tamaño de ventana
+  let _rzT;
+  window.addEventListener('resize', function(){
+    clearTimeout(_rzT);
+    _rzT = setTimeout(function(){
+      Object.keys(CH).forEach(function(id){
+        const el = document.getElementById(id);
+        if(CH[id] && el && el.offsetParent !== null){ try{ CH[id].resize(); }catch(e){} }
+      });
+    }, 150);
+  });
 })();
 
   /* ══ R5 — CHARTS GLOBALES ═══════════════════ */
@@ -309,6 +321,13 @@
     const r5=window.RB.r5; if(!r5) return;
     const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
 
+    // Si el panel está oculto, el canvas mide 0 → diferir hasta que sea visible.
+    const cont=document.getElementById('chartR5CliStock');
+    if(cont && cont.offsetParent===null){
+      setTimeout(function(){ window.buildR5CliCharts(nombre); }, 80);
+      return;
+    }
+
     // Top 15 por score: Stock actual vs Sugerido vs A surtir
     const top15=cli.arts.slice(0,15);
     mk('chartR5CliStock',{type:'bar',data:{
@@ -332,5 +351,12 @@
         borderColor:'#161b22',borderWidth:2,hoverOffset:5}]},
       options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
         plugins:{legend:{position:'right'},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} arts`}}}}});
+
+    // Forzar medición correcta tras crear (por si el panel acaba de hacerse visible)
+    setTimeout(function(){
+      ['chartR5CliStock','chartR5CliSema'].forEach(function(id){
+        if(CH[id]) CH[id].resize();
+      });
+    }, 50);
   };
 
