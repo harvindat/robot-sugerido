@@ -309,25 +309,25 @@
     const r5=window.RB.r5; if(!r5) return;
     const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
 
-    // Top 15: Stock vs Compra sugerida
-    const top15=cli.arts.filter(a=>a.compra>0||a.semaforo==='ROJO').slice(0,15);
+    // Top 15 por score: Stock actual vs Sugerido vs A surtir
+    const top15=cli.arts.slice(0,15);
     mk('chartR5CliStock',{type:'bar',data:{
       labels:top15.map(a=>a.clave),
       datasets:[
         {label:'Stock actual', data:top15.map(a=>a.exist),backgroundColor:'#2e86c188',borderRadius:3},
-        {label:'Compra sugerida',data:top15.map(a=>a.compra),backgroundColor:'#e24b4a99',borderRadius:3},
-        {label:'Óptimo',data:top15.map(a=>a.optimo),type:'line',borderColor:'#27ae60',borderWidth:2,pointRadius:3,backgroundColor:'transparent'},
+        {label:'A surtir',data:top15.map(a=>a.aReforzar),backgroundColor:'#e24b4a99',borderRadius:3},
+        {label:'Sugerido',data:top15.map(a=>a.sugerido),type:'line',borderColor:'#27ae60',borderWidth:2,pointRadius:3,backgroundColor:'transparent'},
       ]},
       options:{responsive:true,maintainAspectRatio:false,
         interaction:{mode:'index',intersect:false},
         plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw}`}}},
         scales:{x:{grid:{display:false},ticks:{...T,font:{size:9}}},y:{grid:{color:G},ticks:T}}}});
 
-    // Semáforo donut
-    const sema={R:cli.arts.filter(a=>a.semaforo==='ROJO').length,A:cli.arts.filter(a=>a.semaforo==='AMARILLO').length,V:cli.arts.filter(a=>a.semaforo==='VERDE').length};
+    // Acción donut
+    const acc={C:cli.arts.filter(a=>a.accion==='COMPRAR').length,R:cli.arts.filter(a=>a.accion==='REFORZAR').length,V:cli.arts.filter(a=>a.accion==='CUBIERTO').length};
     mk('chartR5CliSema',{type:'doughnut',data:{
-      labels:['ROJO (<7d)','AMARILLO (7-30d)','VERDE (≥30d)'],
-      datasets:[{data:[sema.R,sema.A,sema.V],
+      labels:['Comprar (sin stock)','Reforzar (parcial)','Cubierto'],
+      datasets:[{data:[acc.C,acc.R,acc.V],
         backgroundColor:['#e24b4a88','#f59e0b88','#22c55e88'],
         borderColor:'#161b22',borderWidth:2,hoverOffset:5}]},
       options:{responsive:true,maintainAspectRatio:false,cutout:'55%',

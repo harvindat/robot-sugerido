@@ -285,16 +285,20 @@
 
     <!-- ══ R5 — SUGERIDO DE COMPRA ══ -->
     <div class="page" id="page-r5">
-      <!-- Slider de factor de seguridad -->
+      <!-- Sliders de configuración del sugerido -->
       <div class="slider-row">
-        <label>Colchón de seguridad:</label>
+        <label>Colchón de seguridad (global):</label>
         <input type="range" id="r5-factor-slider" min="0" max="100" step="10" value="50"
           oninput="document.getElementById('r5-factor-val').textContent=this.value+'%'">
         <span class="pct-badge" id="r5-factor-val">50%</span>
+        <label style="margin-left:8px">Lead time resurtido:</label>
+        <input type="range" id="r5-lead-slider" min="3" max="45" step="1" value="15"
+          oninput="document.getElementById('r5-lead-val').textContent=this.value+' días'">
+        <span class="pct-badge" id="r5-lead-val" style="min-width:64px">15 días</span>
         <button class="recalc-btn" onclick="window.onRecalcR5()">Recalcular</button>
         <p class="slider-info">
-          0% = stock exacto para 1 mes · 50% = 1.5 meses (recomendado, actualización 2×/sem) · 100% = 2 meses de cobertura.
-          Período detectado: <span id="r5-periodo-txt" style="font-weight:600">—</span>
+          Colchón global afecta la vista de almacén. Lead time = días que tarda el proveedor en entregar; alimenta el sugerido por cliente.
+          Crecimiento por cliente: automático según su volumen (+5% a +20%). Período detectado: <span id="r5-periodo-txt" style="font-weight:600">—</span>
         </p>
       </div>
 
@@ -348,6 +352,11 @@
             Exportar R5 cliente (.xlsx)
           </button>
         </div>
+        <div class="panel" style="margin-bottom:14px">
+          <div class="panel-t">📋 Resumen ejecutivo — ficha de acción</div>
+          <div class="panel-s">Lo que el vendedor necesita saber para actuar con este cliente</div>
+          <div id="r5-resumen-ejecutivo" style="margin-top:10px"><p style="color:var(--muted);font-size:12px">Selecciona un cliente.</p></div>
+        </div>
         <div class="grid-2" style="margin-bottom:14px">
           <div class="panel">
             <div class="panel-t">Demanda vs stock por artículo</div>
@@ -355,14 +364,14 @@
             <div class="chart-h lg"><canvas id="chartR5CliStock"></canvas></div>
           </div>
           <div class="panel">
-            <div class="panel-t">Semáforo por línea</div>
-            <div class="panel-s">Distribución de urgencia en líneas del cliente</div>
+            <div class="panel-t">Distribución de acción</div>
+            <div class="panel-s">Comprar · reforzar · cubierto en los artículos del cliente</div>
             <div class="chart-dona"><canvas id="chartR5CliSema"></canvas></div>
           </div>
         </div>
         <div class="panel">
-          <div class="panel-t">Demanda individual — análisis por artículo del cliente</div>
-          <div class="panel-s">Basado en compras del período · tasa diaria · cobertura actual · compra sugerida</div>
+          <div class="panel-t">Sugerido inteligente — análisis por artículo del cliente</div>
+          <div class="panel-s">Sugerido = histórico × crecimiento + colchón, ajustado por devoluciones · "surtir hoy" prioriza por tier de cliente</div>
           <div class="r5-filtros" id="r5-filtros-cli"></div>
           <div class="tbl-wrap" id="tabla-r5-cli"><p style="color:var(--muted);font-size:12px;padding:10px">Selecciona un cliente.</p></div>
         </div>
@@ -414,7 +423,8 @@ function switchR5View(v, btn){
 /* ── R5 recálculo ─────────────────────────────── */
 window.onRecalcR5 = function(){
   const f = parseInt(document.getElementById('r5-factor-slider')?.value || 50) / 100;
-  if(window.recalcularR5) window.recalcularR5(f);
+  const lead = parseInt(document.getElementById('r5-lead-slider')?.value || 15);
+  if(window.recalcularR5) window.recalcularR5(f, lead);
 };
 
 /* ── KPIs R4 dinámicos ────────────────────────── */

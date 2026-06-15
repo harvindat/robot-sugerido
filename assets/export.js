@@ -485,7 +485,7 @@
     const {r5,periodo} = window.RB;
     if(!r5||!nombre) return;
     const cli=r5.porCliente.find(c=>c.nombre===nombre); if(!cli) return;
-    const arts=cli.arts.filter(a=>a.compra>0||a.semaforo==='ROJO');
+    const arts=cli.arts; // todos, ordenados por score
 
     const wb = XLSX.utils.book_new();
     const ws = {};
@@ -499,45 +499,56 @@
       amar:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'9A7D0A'}}, alignment:{horizontal:'center'}, border:border() },
       verd:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1E8449'}}, alignment:{horizontal:'center'}, border:border() },
       comp:  { font:{bold:true,sz:9, color:{rgb:'FFFFFF'}}, fill:{fgColor:{rgb:'1A5276'}}, alignment:{horizontal:'center'}, border:border() },
+      sug:   { font:{bold:true,sz:9, color:{rgb:'1A5276'}}, fill:{fgColor:{rgb:'D6EAF8'}}, alignment:{horizontal:'center'}, border:border() },
       inv:   { font:{bold:true,sz:9, color:{rgb:'7E5109'}}, fill:{fgColor:{rgb:'FEF5E7'}}, alignment:{horizontal:'right'},  border:border() },
     };
 
-    setCell(ws,r,0,`R5 — ANÁLISIS DE DEMANDA — ${nombre.toUpperCase()}`,S5c.title); merge(ws,r,0,r,10); r++;
-    setCell(ws,r,0,`Período: ${periodo.texto||'—'} · Arts.: ${cli.arts.length} · Urgentes: ${cli.urgentes} · Compra total: ${cli.totalCompra} pzas · Inversión: $${Math.round(cli.totalInversion).toLocaleString('es-MX')}`,S5c.sub); merge(ws,r,0,r,10); r++;
+    setCell(ws,r,0,`R5 — SUGERIDO INTELIGENTE — ${nombre.toUpperCase()}`,S5c.title); merge(ws,r,0,r,15); r++;
+    setCell(ws,r,0,`Tier: ${cli.tier} · Período: ${periodo.texto||'—'} (${r5.dias} días) · Crecimiento: +${Math.round(cli.factorCrec*100)}% · Lead time: ${r5.leadTimeDias} días · Surtir hoy: ${cli.totalSurtibleHoy} · Pedir a proveedor: ${cli.totalPendienteProv} · Inversión: $${Math.round(cli.totalInversion).toLocaleString('es-MX')}`,S5c.sub); merge(ws,r,0,r,15); r++;
+    setCell(ws,r,0,'Metodología: sugerido = promedio_mensual × (1+crecimiento) + colchón_resurtido, ajustado por devoluciones. "Surtir hoy" prioriza por tier de cliente cuando el stock es compartido.',{font:{sz:8,italic:true,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F618D'}},alignment:{horizontal:'center'},border:border()}); merge(ws,r,0,r,15); r++;
     r++;
 
-    const hdrs=['Clave','Descripción','Línea','Uds/Per.','Tasa/día','Stock actual','Cob. días','Compra sugerida','Precio real $','Inversión $','Semáforo'];
-    const wc=[12,55,22,10,10,13,10,16,14,14,10];
+    const hdrs=['#','Clave','Descripción','Línea','Score','Confianza','Uds/Per.','Prom/mes','Sugerido','Stock','A surtir','Surtir hoy','Pedir prov.','Precio $','Inversión $','Acción'];
+    const wc=[5,12,42,18,8,11,9,10,11,9,10,11,12,11,12,11];
     hdrs.forEach((h,c)=>setCell(ws,r,c,h,S5c.hdr)); r++;
 
     arts.forEach((a,i)=>{
       const ev=i%2===0;
       const dA=ev?S.dataA:S.dataB, dAC=ev?S.dataAC:S.dataBC, dAR=ev?S.dataAR:S.dataBR;
-      const semSt=a.semaforo==='ROJO'?S5c.rojo:a.semaforo==='AMARILLO'?S5c.amar:S5c.verd;
-      setCell(ws,r,0,a.clave,   dA);
-      setCell(ws,r,1,a.desc,    dA);
-      setCell(ws,r,2,a.linea,   dAC);
-      setCell(ws,r,3,a.uds,     dAC);
-      setCell(ws,r,4,a.tasa,    dAC);
-      setCell(ws,r,5,a.exist,   dAC);
-      setCell(ws,r,6,a.cobertura>=9999?'∞':a.cobertura, dAC);
-      setCell(ws,r,7,a.compra,  S5c.comp);
-      setCell(ws,r,8,a.precio||0, dAR);
-      setCell(ws,r,9,a.inversion||0, S5c.inv);
-      setCell(ws,r,10,a.semaforo, semSt);
+      const accSt=a.accion==='COMPRAR'?S5c.rojo:a.accion==='REFORZAR'?S5c.amar:S5c.verd;
+      setCell(ws,r,0,i+1,        dAC);
+      setCell(ws,r,1,a.clave,    dA);
+      setCell(ws,r,2,a.desc,     dA);
+      setCell(ws,r,3,a.linea,    dAC);
+      setCell(ws,r,4,a.score,    dAC);
+      setCell(ws,r,5,a.confianza, dAC);
+      setCell(ws,r,6,a.uds,      dAC);
+      setCell(ws,r,7,a.promMensual, dAC);
+      setCell(ws,r,8,a.sugerido, S5c.sug);
+      setCell(ws,r,9,a.exist,    dAC);
+      setCell(ws,r,10,a.aReforzar, dAC);
+      setCell(ws,r,11,a.surtibleHoy||0, S5c.verd);
+      setCell(ws,r,12,a.pendienteProv||0, (a.pendienteProv||0)>0?S5c.rojo:dAC);
+      setCell(ws,r,13,a.precio||0, dAR);
+      setCell(ws,r,14,a.inversion||0, S5c.inv);
+      setCell(ws,r,15,a.accion,  accSt);
       r++;
     });
 
     r++;
-    setCell(ws,r,0,'TOTALES',S.totalLbl); merge(ws,r,0,r,6);
-    setCell(ws,r,7,cli.totalCompra,S.total);
-    setCell(ws,r,8,'',S.total);
-    setCell(ws,r,9,Math.round(cli.totalInversion),{...S.total,alignment:{horizontal:'right'}});
-    setCell(ws,r,10,'',S.total);
+    setCell(ws,r,0,'TOTALES',S.totalLbl); merge(ws,r,0,r,7);
+    setCell(ws,r,8,cli.totalSugerido,S.total);
+    setCell(ws,r,9,'',S.total);
+    setCell(ws,r,10,cli.totalReforzar,S.total);
+    setCell(ws,r,11,cli.totalSurtibleHoy,S.total);
+    setCell(ws,r,12,cli.totalPendienteProv,S.total);
+    setCell(ws,r,13,'',S.total);
+    setCell(ws,r,14,Math.round(cli.totalInversion),{...S.total,alignment:{horizontal:'right'}});
+    setCell(ws,r,15,'',S.total);
 
     ws['!cols']=wc.map(w=>({wpx:w*6}));
-    autoRange(ws,r,10);
-    XLSX.utils.book_append_sheet(wb,ws,'R5 Cliente');
+    autoRange(ws,r,15);
+    XLSX.utils.book_append_sheet(wb,ws,'R5 Sugerido Cliente');
     XLSX.writeFile(wb,`R5_${nombre.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)}.xlsx`);
   }
 

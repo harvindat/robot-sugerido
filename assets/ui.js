@@ -412,12 +412,15 @@
     const cli=r5.porCliente.find(c=>c.nombre===nombre);
     if(!cli){ document.getElementById('tabla-r5-cli').innerHTML='<p style="color:var(--muted);font-size:12px;padding:10px">Cliente no encontrado.</p>'; return; }
 
-    // Filtros por semáforo
+    // MEJORA 4 — Resumen ejecutivo (ficha de acción para el vendedor)
+    renderResumenEjecutivo(cli);
+
+    // Filtros por acción
     const rowF=document.getElementById('r5-filtros-cli');
     if(rowF){
-      let hF='<span class="filter-lbl">Semáforo:</span>';
-      ['','ROJO','AMARILLO','VERDE'].forEach(function(s){
-        hF+='<button class="fbtn'+(s===''?' on':'')+'" onclick="filtrarR5C_sema(this,\''+s+'\');">'+(s||'Todos')+'</button>';
+      let hF='<span class="filter-lbl">Acción:</span>';
+      [['','Todas'],['COMPRAR','Comprar'],['REFORZAR','Reforzar'],['CUBIERTO','Cubierto']].forEach(function(pair){
+        hF+='<button class="fbtn'+(pair[0]===''?' on':'')+'" onclick="filtrarR5C_sema(this,\''+pair[0]+'\');">'+pair[1]+'</button>';
       });
       rowF.innerHTML=hF;
     }
@@ -427,38 +430,75 @@
     renderTablaR5Cli(cli, '');
 
     const cnt=document.getElementById('r5-cli-count');
-    if(cnt) cnt.textContent=cli.arts.length+' arts · '+cli.urgentes+' urgentes · compra sugerida: '+cli.totalCompra+' pzas · '+fK(cli.totalInversion);
+    if(cnt) cnt.textContent=cli.arts.length+' arts · '+cli.tier+' · crec. +'+Math.round(cli.factorCrec*100)+'% · surtir hoy '+cli.totalSurtibleHoy+' · pedir a proveedor '+cli.totalPendienteProv+' · '+fK(cli.totalInversion);
 
     if(window.buildR5CliCharts) window.buildR5CliCharts(nombre);
   };
 
-  function renderTablaR5Cli(cli, filtroSema){
+  // MEJORA 4 — Ficha ejecutiva
+  function renderResumenEjecutivo(cli){
+    const cont=document.getElementById('r5-resumen-ejecutivo'); if(!cont) return;
+    const tierColor=cli.tier==='ORO'?'#b8860b':cli.tier==='PLATA'?'#708090':'#8b6914';
+    const tierBg=cli.tier==='ORO'?'#fef9e7':cli.tier==='PLATA'?'#f4f6f6':'#fdf2e3';
+    // Top 5 prioridades de acción (comprar/reforzar con mayor score)
+    const top=cli.arts.filter(a=>a.accion!=='CUBIERTO').slice(0,5);
+    let topHtml='';
+    if(top.length){
+      topHtml=top.map(function(a){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid var(--border)">'
+          +'<span style="font-size:12px"><b>'+a.clave+'</b> <span style="color:var(--muted)">'+a.desc.slice(0,32)+'</span></span>'
+          +'<span style="font-size:11px;white-space:nowrap">ofrecer <b style="color:var(--accent)">'+a.sugerido+'</b> · surtir hoy <b>'+(a.surtibleHoy||0)+'</b> <span class="pill '+(a.confianza==='ALTA'?'g':a.confianza==='MEDIA'?'a':'r')+'" style="font-size:9px">'+a.confianza+'</span></span>'
+          +'</div>';
+      }).join('');
+    } else {
+      topHtml='<div style="font-size:12px;color:var(--green);padding:6px 0">✓ Cliente bien cubierto — sin acciones urgentes.</div>';
+    }
+    cont.innerHTML=
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
+        +'<div style="background:'+tierBg+';color:'+tierColor+';border:1px solid '+tierColor+';border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700">Cliente '+cli.tier+'</div>'
+        +'<div style="font-size:12px;color:var(--muted)">Crecimiento aplicado: <b style="color:var(--text)">+'+Math.round(cli.factorCrec*100)+'%</b></div>'
+        +'<div style="font-size:12px;color:var(--muted)">A surtir hoy: <b style="color:var(--green)">'+cli.totalSurtibleHoy+' pzas</b></div>'
+        +'<div style="font-size:12px;color:var(--muted)">Pedir a proveedor: <b style="color:var(--red)">'+cli.totalPendienteProv+' pzas</b></div>'
+        +'<div style="font-size:12px;color:var(--muted)">Inversión: <b style="color:var(--text)">'+fK(cli.totalInversion)+'</b></div>'
+      +'</div>'
+      +'<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Top 5 acciones prioritarias</div>'
+      +topHtml;
+  }
+
+  function renderTablaR5Cli(cli, filtroAccion){
     const div=document.getElementById('tabla-r5-cli'); if(!div) return;
     let arts=cli.arts;
-    if(filtroSema) arts=arts.filter(a=>a.semaforo===filtroSema);
-    const mostrar=arts.filter(a=>a.compra>0||a.semaforo==='ROJO'||a.semaforo==='AMARILLO');
+    if(filtroAccion) arts=arts.filter(a=>a.accion===filtroAccion);
+    const mostrar=arts;
 
     let h='<table><thead><tr>'
-      +'<th>Clave</th><th>Descripción</th><th>Línea</th>'
-      +'<th>Uds/per.</th><th>Tasa/día</th><th>Stock</th>'
-      +'<th>Cob. días</th><th>Compra sug.</th><th>Precio real</th><th>Inversión</th><th>Semáforo</th>'
+      +'<th>#</th><th>Clave</th><th>Descripción</th><th>Línea</th>'
+      +'<th>Score</th><th>Conf.</th><th>Uds/per.</th><th>Sugerido</th><th>Stock</th>'
+      +'<th>A surtir</th><th>Surtir hoy</th><th>Pedir prov.</th><th>Precio</th><th>Inversión</th><th>Acción</th>'
       +'</tr></thead><tbody>';
-    if(!mostrar.length) h+='<tr><td colspan="11" style="text-align:center;color:var(--muted)">No hay artículos urgentes o a comprar con este filtro.</td></tr>';
-    mostrar.forEach(function(a){
-      var scls=a.semaforo==='ROJO'?'sema-r':a.semaforo==='AMARILLO'?'sema-a':'sema-v';
-      var cobTxt=a.cobertura>=9999?'∞':a.cobertura+'d';
-      h+='<tr>'
+    if(!mostrar.length) h+='<tr><td colspan="15" style="text-align:center;color:var(--muted)">Sin artículos con este filtro.</td></tr>';
+    mostrar.forEach(function(a,i){
+      var acls=a.accion==='COMPRAR'?'sema-r':a.accion==='REFORZAR'?'sema-a':'sema-v';
+      var scCls=a.score>=7?'g':a.score>=4?'a':'r';
+      var cfCls=a.confianza==='ALTA'?'g':a.confianza==='MEDIA'?'a':'r';
+      var rowBg=a.accion==='COMPRAR'?'background:rgba(226,75,74,0.05)':a.accion==='REFORZAR'?'background:rgba(212,172,13,0.04)':'';
+      var compMark=a.competido?' <span title="Stock compartido entre clientes" style="color:var(--amber);font-size:9px">⚠</span>':'';
+      h+='<tr style="'+rowBg+'">'
+        +'<td style="text-align:center;color:var(--muted);font-size:10px">'+(i+1)+'</td>'
         +'<td style="font-size:11px">'+a.clave+'</td>'
-        +'<td style="max-width:220px;font-size:11px;overflow:hidden;text-overflow:ellipsis">'+a.desc+'</td>'
+        +'<td style="max-width:160px;font-size:11px;overflow:hidden;text-overflow:ellipsis">'+a.desc+'</td>'
         +'<td style="font-size:10px"><span class="pill b">'+a.linea+'</span></td>'
-        +'<td style="text-align:center;font-weight:600">'+a.uds+'</td>'
-        +'<td style="text-align:center;font-size:10px;color:var(--muted)">'+a.tasa+'</td>'
+        +'<td style="text-align:center"><span class="pill '+scCls+'">'+a.score+'</span></td>'
+        +'<td style="text-align:center"><span class="pill '+cfCls+'" style="font-size:9px">'+a.confianza+'</span></td>'
+        +'<td style="text-align:center;font-size:11px">'+a.uds+'</td>'
+        +'<td style="text-align:center;font-weight:700;color:var(--accent);font-size:12px">'+a.sugerido+'</td>'
         +'<td style="text-align:center;font-weight:600">'+a.exist+'</td>'
-        +'<td style="text-align:center;font-weight:600;color:'+(a.cobertura<7?'var(--red)':a.cobertura<30?'var(--amber)':'var(--green)')+'">'+cobTxt+'</td>'
-        +'<td style="text-align:center;font-weight:700;color:var(--accent)">'+a.compra+'</td>'
+        +'<td style="text-align:center;font-weight:700;color:'+(a.aReforzar>0?'var(--red)':'var(--muted)')+'">'+a.aReforzar+'</td>'
+        +'<td style="text-align:center;font-weight:700;color:var(--green)">'+(a.surtibleHoy||0)+compMark+'</td>'
+        +'<td style="text-align:center;font-weight:600;color:'+((a.pendienteProv||0)>0?'var(--red)':'var(--muted)')+'">'+(a.pendienteProv||0)+'</td>'
         +'<td class="col-precio" style="font-size:10px">'+(a.precio>0?'$'+a.precio:'—')+'</td>'
         +'<td class="col-valor" style="font-size:11px"><span class="pill inv">'+(a.inversion>0?fK(a.inversion):'—')+'</span></td>'
-        +'<td style="text-align:center"><span class="pill '+scls+'">'+a.semaforo+'</span></td>'
+        +'<td style="text-align:center"><span class="pill '+acls+'">'+a.accion+'</span></td>'
         +'</tr>';
     });
     div.innerHTML=h+'</tbody></table>';

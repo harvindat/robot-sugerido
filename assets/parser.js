@@ -351,19 +351,54 @@
   /*   factorSeg: 0.0 = solo demanda mensual exacta
        0.5 (default) = 15 días de colchón extra
        1.0 = 2 meses de stock total                          */
-  function buildR5(clientes, inv, catalogo, inactivos, precioMap, dias, factorSeg) {
+  /* Factor de crecimiento escalonado por madurez del cliente.
+     Cliente grande/maduro → crecimiento marginal; pequeño con potencial → mayor empuje. */
+  function factorCrecimiento(udsTotalCliente) {
+    if (udsTotalCliente > 4000) return 0.05; // grande/maduro:  +5%
+    if (udsTotalCliente > 1500) return 0.10; // mediano:        +10%
+    if (udsTotalCliente > 500)  return 0.15; // en desarrollo:  +15%
+    return 0.20;                              // pequeño potencial: +20%
+  }
+
+  /* Tier de cliente por peso acumulado en ventas (Pareto):
+     ORO = top hasta 70% de la venta · PLATA = hasta 90% · BRONCE = resto.
+     Cuando el stock no alcanza, se prioriza surtir al cliente de mayor tier. */
+  function calcularTiers(clientes) {
+    const orden = clientes.map(c => ({ nombre: c.nombre, venta: c.ventaTotal }))
+                          .sort((a, b) => b.venta - a.venta);
+    const totalV = orden.reduce((s, c) => s + c.venta, 0) || 1;
+    const tier = {};
+    let cum = 0;
+    orden.forEach(c => {
+      cum += c.venta;
+      const pct = cum / totalV;
+      tier[c.nombre] = pct <= 0.70 ? 'ORO' : pct <= 0.90 ? 'PLATA' : 'BRONCE';
+    });
+    return tier;
+  }
+
+  function buildR5(clientes, inv, catalogo, inactivos, precioMap, dias, factorSeg, leadTimeDias) {
     if (dias <= 0) dias = 15;
     if (factorSeg === undefined || factorSeg === null) factorSeg = 0.5;
+    if (leadTimeDias === undefined || leadTimeDias === null) leadTimeDias = 15;
 
-    /* ── Demanda global por artículo (suma de todos los clientes) ── */
+    const tierMap  = calcularTiers(clientes);
+    const tierRank = { ORO: 0, PLATA: 1, BRONCE: 2 };
+
+    /* ── Demanda global por artículo (suma de todos los clientes) ──
+       Registra también devoluciones (uds < 0) para medir la tasa. */
     const demMap = {};
     clientes.forEach(cli => {
       cli.arts.forEach(a => {
-        if (a.uds <= 0) return; // excluir devoluciones
-        if (!demMap[a.clave]) demMap[a.clave] = { uds: 0, venta: 0, clientes: new Set() };
-        demMap[a.clave].uds    += a.uds;
-        demMap[a.clave].venta  += a.venta;
-        demMap[a.clave].clientes.add(cli.nombre);
+        if (!demMap[a.clave]) demMap[a.clave] = { uds: 0, venta: 0, devUds: 0, lineas: 0, clientes: new Set() };
+        if (a.uds > 0) {
+          demMap[a.clave].uds    += a.uds;
+          demMap[a.clave].venta  += a.venta;
+          demMap[a.clave].lineas += 1;
+          demMap[a.clave].clientes.add(cli.nombre);
+        } else if (a.uds < 0) {
+          demMap[a.clave].devUds += Math.abs(a.uds);   // devoluciones
+        }
       });
     });
 
@@ -387,6 +422,7 @@
       const optimo = Math.ceil(demMes * (1 + factorSeg));  // stock objetivo
       const compra = Math.max(0, optimo - exist);
       const cobert = tasa > 0 ? +(exist / tasa).toFixed(1) : 9999;
+      const tasaDev = (d.uds + d.devUds) > 0 ? +(d.devUds / (d.uds + d.devUds) * 100).toFixed(1) : 0;
       const semaf  = exist === 0 && d.uds > 0 ? 'ROJO'
                    : cobert <  7 ? 'ROJO'
                    : cobert < 30 ? 'AMARILLO'
@@ -408,6 +444,7 @@
         compra,
         cobertura:  cobert,
         semaforo:   semaf,
+        tasaDev,
         inversion:  +(compra * precio).toFixed(0),
         isActivo:   !inactivos.has(clave),
       });
@@ -419,51 +456,147 @@
       return b.compra - a.compra;
     });
 
-    /* ── Vista por cliente ── */
+    /* ── Vista por cliente — SUGERIDO INTELIGENTE (la joya de la corona) ──
+       Combina: promedio mensual + score de prioridad + crecimiento escalonado
+       + colchón de resurtido + penalización por devoluciones + índice de confianza,
+       cruzado contra inventario y con tier de cliente para priorizar el surtido. */
     const porCliente = clientes.map(cli => {
-      const cliArts = cli.arts
-        .filter(a => a.uds > 0)
-        .map(a => {
-          const exist  = (inv[a.clave] || {}).exist || 0;
-          const precio = a.precio_unit || precioMap[a.clave] || 0;
-          const tasa   = a.uds / dias;
-          const demMes = tasa * 30;
-          const optimo = Math.ceil(demMes * (1 + factorSeg));
-          const compra = Math.max(0, optimo - exist);
-          const cobert = tasa > 0 ? +(exist / tasa).toFixed(1) : 9999;
-          const semaf  = exist === 0 ? 'ROJO'
-                       : cobert <  7 ? 'ROJO'
-                       : cobert < 30 ? 'AMARILLO'
-                       : 'VERDE';
-          return {
-            clave:     a.clave,
-            desc:      (catalogo[a.clave] || {}).desc || a.desc || '',
-            linea:     (catalogo[a.clave] || {}).linea || '',
-            uds:       a.uds,
-            venta:     a.venta,
-            precio,
-            exist,
-            tasa:      +tasa.toFixed(3),
-            demMes:    +demMes.toFixed(1),
-            optimo,
-            compra,
-            cobertura: cobert,
-            semaforo:  semaf,
-            inversion: +(compra * precio).toFixed(0),
-          };
-        });
-      cliArts.sort((a, b) => {
-        if (semOrd[a.semaforo] !== semOrd[b.semaforo]) return semOrd[a.semaforo] - semOrd[b.semaforo];
-        return b.compra - a.compra;
+      const artsPos = cli.arts.filter(a => a.uds > 0);
+      const udsTotalCli = artsPos.reduce((s, a) => s + a.uds, 0);
+      const factorCrec  = factorCrecimiento(udsTotalCli);
+      const tier        = tierMap[cli.nombre] || 'BRONCE';
+      const maxU = artsPos.length ? Math.max.apply(null, artsPos.map(a => a.uds))   : 1;
+      const maxV = artsPos.length ? Math.max.apply(null, artsPos.map(a => a.venta)) : 1;
+
+      const cliArts = artsPos.map(a => {
+        const cat    = catalogo[a.clave] || {};
+        const exist  = (inv[a.clave] || {}).exist || 0;
+        const precio = a.precio_unit || precioMap[a.clave] || 0;
+        const tasa   = a.uds / dias;                          // uds/día de ESTE cliente
+        const dGlob  = demMap[a.clave] || { uds: 0, devUds: 0, lineas: 0, clientes: new Set() };
+
+        // 1. Promedio mensual histórico del cliente para este artículo
+        const promMensual = +(tasa * 30).toFixed(2);
+        // 2. Demanda proyectada con crecimiento escalonado
+        const demProy     = +(promMensual * (1 + factorCrec)).toFixed(2);
+        // 3. Colchón de resurtido (demanda durante el lead time del proveedor)
+        const colchon     = +(tasa * leadTimeDias).toFixed(2);
+
+        // MEJORA 2 — Penalización por devoluciones (tasa global del artículo)
+        const tasaDev   = (dGlob.uds + dGlob.devUds) > 0
+                        ? dGlob.devUds / (dGlob.uds + dGlob.devUds) : 0;
+        const penalizDev = 1 - Math.min(tasaDev, 0.5);   // hasta -50% si devuelve mucho
+
+        // 4. Sugerido ajustado por devoluciones
+        const sugerido = Math.max(1, Math.ceil((demProy + colchon) * penalizDev));
+
+        // Score de prioridad (70% uds + 30% venta)
+        const score = +((a.uds / maxU * 0.7 + a.venta / maxV * 0.3) * 10).toFixed(1);
+
+        // MEJORA 3 — Índice de confianza del sugerido
+        // Más unidades históricas y más clientes comprándolo = más confiable.
+        // Penaliza artículos con devolución alta.
+        let conf = 0;
+        if (a.uds >= 10) conf += 2; else if (a.uds >= 4) conf += 1;
+        if (dGlob.clientes.size >= 3) conf += 2; else if (dGlob.clientes.size >= 2) conf += 1;
+        if (tasaDev > 0.2) conf -= 2; else if (tasaDev > 0.1) conf -= 1;
+        const confianza = conf >= 3 ? 'ALTA' : conf >= 1 ? 'MEDIA' : 'BAJA';
+
+        // Acción según inventario disponible
+        const accion = exist >= sugerido ? 'CUBIERTO'
+                     : exist === 0       ? 'COMPRAR'
+                     : 'REFORZAR';
+        const aReforzar = Math.max(0, sugerido - exist);
+        const cobert    = tasa > 0 ? +(exist / tasa).toFixed(1) : 9999;
+        const semaf     = accion === 'COMPRAR' ? 'ROJO'
+                        : accion === 'REFORZAR' ? 'AMARILLO'
+                        : 'VERDE';
+
+        return {
+          clave:       a.clave,
+          desc:        cat.desc  || a.desc || '',
+          linea:       cat.linea || '',
+          uds:         a.uds,
+          venta:       a.venta,
+          precio,
+          score,
+          exist,
+          promMensual,
+          demProy,
+          colchon,
+          sugerido,
+          aReforzar,
+          accion,
+          tasa:        +tasa.toFixed(3),
+          cobertura:   cobert,
+          semaforo:    semaf,
+          tasaDev:     +(tasaDev * 100).toFixed(1),
+          confianza,
+          stockGlobal: (inv[a.clave] || {}).exist || 0,
+          nClientesArt: dGlob.clientes.size,
+          inversion:   Math.round(aReforzar * precio),
+        };
       });
+
+      // Orden por prioridad (score desc)
+      cliArts.sort((a, b) => b.score - a.score);
+
       return {
         nombre:         cli.nombre,
         ventaTotal:     cli.ventaTotal,
+        tier,
+        factorCrec,
+        udsTotalCli,
         arts:           cliArts,
-        totalCompra:    cliArts.reduce((s, a) => s + a.compra, 0),
+        totalSugerido:  cliArts.reduce((s, a) => s + a.sugerido, 0),
+        totalReforzar:  cliArts.reduce((s, a) => s + a.aReforzar, 0),
         totalInversion: cliArts.reduce((s, a) => s + a.inversion, 0),
-        urgentes:       cliArts.filter(a => a.semaforo === 'ROJO').length,
+        urgentes:       cliArts.filter(a => a.accion === 'COMPRAR').length,
+        reforzar:       cliArts.filter(a => a.accion === 'REFORZAR').length,
+        cubiertos:      cliArts.filter(a => a.accion === 'CUBIERTO').length,
+        totalCompra:    cliArts.reduce((s, a) => s + a.aReforzar, 0),
       };
+    });
+
+    /* ── MEJORA 1 — Asignación de stock por prioridad de cliente ──
+       Para cada artículo, si la suma de "a reforzar" de todos los clientes
+       supera el stock disponible, se reparte priorizando por tier (ORO→PLATA→BRONCE)
+       y luego por score. Cada línea recibe cuánto puede surtirse REALMENTE hoy. */
+    const pedidosPorArt = {};
+    porCliente.forEach(cli => {
+      cli.arts.forEach(a => {
+        if (a.aReforzar <= 0) return;
+        if (!pedidosPorArt[a.clave]) pedidosPorArt[a.clave] = [];
+        pedidosPorArt[a.clave].push({
+          cliente: cli.nombre, tier: cli.tier, score: a.score,
+          pide: a.aReforzar, ref: a,
+        });
+      });
+    });
+    Object.entries(pedidosPorArt).forEach(([clave, reqs]) => {
+      const stock = (inv[clave] || {}).exist || 0;
+      // Ordenar por prioridad: tier, luego score
+      reqs.sort((x, y) => (tierRank[x.tier] - tierRank[y.tier]) || (y.score - x.score));
+      let restante = stock;
+      reqs.forEach(req => {
+        const surtible = Math.min(req.pide, Math.max(0, restante));
+        restante -= surtible;
+        req.ref.surtibleHoy   = surtible;             // cuánto se puede dar YA
+        req.ref.pendienteProv = req.pide - surtible;  // cuánto requiere comprar al proveedor
+        req.ref.competido     = reqs.length > 1 && stock < reqs.reduce((s, r) => s + r.pide, 0);
+      });
+    });
+    // Para los artículos sin competencia, surtibleHoy = lo disponible vs lo que pide
+    porCliente.forEach(cli => {
+      cli.arts.forEach(a => {
+        if (a.surtibleHoy === undefined) {
+          a.surtibleHoy   = Math.min(a.aReforzar, a.exist);
+          a.pendienteProv = Math.max(0, a.aReforzar - a.surtibleHoy);
+          a.competido     = false;
+        }
+      });
+      cli.totalSurtibleHoy = cli.arts.reduce((s, a) => s + (a.surtibleHoy || 0), 0);
+      cli.totalPendienteProv = cli.arts.reduce((s, a) => s + (a.pendienteProv || 0), 0);
     });
 
     return {
@@ -471,6 +604,7 @@
       porCliente,
       dias,
       factorSeg,
+      leadTimeDias,
       // KPIs globales
       totalArts:      arts.length,
       totalCompra:    arts.reduce((s, a) => s + a.compra, 0),
@@ -563,15 +697,21 @@
       const r4 = buildR4(clientes, inv, catalogo);
 
       msg.textContent = 'Calculando R5 — Sugerido de compra…';
-      const r5   = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, 0.5);
+      const r5   = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, 0.5, 15);
       const kpis = buildKpis(inv, catalogo, inactivos, clientes, r1, r2, r5);
 
       window.RB = { inv, catalogo, inactivos, clientes, precioMap, r1, r2, r3, r4, r5, kpis, periodo };
       window.RB._r2pct = 20;
+      window.RB._r5lead = 15;
+      window.RB._r5factor = 0.5;
 
-      // Exponer recálculo de R5 para el slider de la UI
-      window.recalcularR5 = function (factorSeg) {
-        window.RB.r5 = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, factorSeg);
+      // Exponer recálculo de R5 para los sliders de la UI
+      window.recalcularR5 = function (factorSeg, leadTimeDias) {
+        if (factorSeg === undefined)   factorSeg   = window.RB._r5factor;
+        if (leadTimeDias === undefined) leadTimeDias = window.RB._r5lead;
+        window.RB._r5factor = factorSeg;
+        window.RB._r5lead   = leadTimeDias;
+        window.RB.r5 = buildR5(clientes, inv, catalogo, inactivos, precioMap, periodo.dias, factorSeg, leadTimeDias);
         document.dispatchEvent(new CustomEvent('r5updated', { detail: window.RB.r5 }));
       };
 
