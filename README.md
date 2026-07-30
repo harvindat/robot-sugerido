@@ -1,4 +1,4 @@
-# 🤖 Robot Sugerido de Compra — Grupo Águila
+# 🤖 Robot Sugerido de Compra — HARVIN
 
 Dashboard interactivo que lee **ROBOTBETO.xlsx** y genera automáticamente los 3 análisis de sugerido de compra por cliente.
 
